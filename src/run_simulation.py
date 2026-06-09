@@ -1,0 +1,248 @@
+import os
+import time
+import random
+import rebound
+import numpy as np
+
+
+JUPITER_MASS_TO_SOLAR_MASS = 9.5479e-4
+
+
+def random_angle():
+    return random.random() * 2.0 * np.pi
+
+
+def format_time(seconds):
+    seconds = int(seconds)
+
+    months = seconds // (30 * 24 * 3600)
+    seconds %= 30 * 24 * 3600
+
+    weeks = seconds // (7 * 24 * 3600)
+    seconds %= 7 * 24 * 3600
+
+    days = seconds // (24 * 3600)
+    seconds %= 24 * 3600
+
+    hours = seconds // 3600
+    seconds %= 3600
+
+    minutes = seconds // 60
+    seconds %= 60
+
+    parts = []
+
+    if months:
+        parts.append(f"{months} months")
+    if weeks:
+        parts.append(f"{weeks} weeks")
+    if days:
+        parts.append(f"{days} days")
+    if hours:
+        parts.append(f"{hours} hours")
+    if minutes:
+        parts.append(f"{minutes} minutes")
+    if seconds:
+        parts.append(f"{seconds} seconds")
+
+    return ", ".join(parts) if parts else "0 seconds"
+
+
+def build_simulation(config):
+    Mstar = float(config["star"]["mass"])
+
+    gp = config["giant_planet"]
+
+    M_planet = float(gp["mass_jupiter"]) * JUPITER_MASS_TO_SOLAR_MASS
+    a_planet = float(gp["a"])
+    e_planet = float(gp["e"])
+    inc_planet = np.deg2rad(float(gp["inc_deg"]))
+    omega_planet = np.deg2rad(float(gp["omega_deg"]))
+
+    t_peri = float(gp["t_peri_jd"])
+    orbital_period = float(gp["orbital_period_days"])
+    epoch_t = float(gp["epoch_jd"])
+
+    MA_planet = (2.0 * np.pi / orbital_period) * (epoch_t - t_peri)
+
+    if gp["Omega_random"]:
+        Omega_planet = random_angle()
+    else:
+        Omega_planet = 0.0
+
+    disk = config["disk"]
+
+    amin = float(disk["amin"])
+    amax = float(disk["amax"])
+
+    emin = float(disk["emin"])
+    emax = float(disk["emax"])
+
+    imin = np.deg2rad(float(disk["imin_deg"]))
+    imax = np.deg2rad(float(disk["imax_deg"]))
+
+    npl = int(config["dwarf_planets"]["N"])
+    Npart = int(config["test_particles"]["N"])
+
+    mass_fraction = float(
+        config["dwarf_planets"]["mass_fraction_of_giant_planet"]
+    )
+
+    mdps = M_planet * mass_fraction
+
+    sim = rebound.Simulation()
+
+    sim.units = (
+        config["units"]["time"],
+        config["units"]["length"],
+        config["units"]["mass"],
+    )
+
+    sim.integrator = config["integration"]["integrator"]
+
+    sim.exit_max_distance = float(config["integration"]["exit_max_distance"])
+
+    # Star
+    sim.add(m=Mstar)
+
+    # Giant planet
+    sim.add(
+        primary=sim.particles[0],
+        m=M_planet,
+        a=a_planet,
+        e=e_planet,
+        inc=inc_planet,
+        omega=omega_planet,
+        Omega=Omega_planet,
+        M=MA_planet,
+    )
+
+    timestep_fraction = float(
+        config["integration"]["timestep_fraction_of_planet_period"]
+    )
+
+    sim.dt = timestep_fraction * sim.particles[1].P
+
+    # Dwarf planets
+    for _ in range(npl):
+        sim.add(
+            primary=sim.particles[0],
+            m=mdps,
+            a=np.random.uniform(amin, amax),
+            e=np.random.uniform(emin, emax),
+            inc=np.random.uniform(imin, imax),
+            omega=random_angle(),
+            Omega=random_angle(),
+            M=random_angle(),
+        )
+
+    sim.N_active = npl + 2
+    sim.move_to_com()
+
+    # Test particles
+    for _ in range(Npart):
+        sim.add(
+            primary=sim.particles[0],
+            a=np.random.uniform(amin, amax),
+            e=np.random.uniform(emin, emax),
+            inc=np.random.uniform(imin, imax),
+            omega=random_angle(),
+            Omega=random_angle(),
+            M=random_angle(),
+        )
+
+    return sim
+
+
+def run_simulation(config):
+    maxtime = float(config["integration"]["maxtime"])
+    Noutputs = int(config["integration"]["Noutputs"])
+
+    times = np.linspace(0.0, maxtime, Noutputs)
+
+    output_file = config["simulation"]["output_file"]
+    output_dir = os.path.dirname(output_file)
+
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    if os.path.exists(output_file):
+        os.remove(output_file)
+
+    sim = build_simulation(config)
+
+    E0 = sim.energy()
+
+    print("\nBeginning the main integration")
+
+    start_walltime = time.time()
+
+    for i, int_time in enumerate(times):
+        try:
+            sim.integrate(int_time)
+
+            sim.simulationarchive_snapshot(output_file)
+
+            E1 = sim.energy()
+
+            elapsed_total = time.time() - start_walltime
+            completed_outputs = i + 1
+            avg_time_per_output = elapsed_total / completed_outputs
+            remaining_outputs = Noutputs - completed_outputs
+            estimated_remaining = avg_time_per_output * remaining_outputs
+
+            print(f"\nOutput {completed_outputs}/{Noutputs}")
+            print(f"Simulation time = {int_time:.3e} yr")
+            print(f"dE/E0 = {(E1 - E0) / E0:.3e}")
+            print(f"Current particles = {sim.N}")
+
+            if completed_outputs >= 2:
+                print(
+                    "Estimated time remaining: "
+                    f"{format_time(estimated_remaining)}"
+                )
+
+        except rebound.Escape as error:
+            print(error)
+
+            escaped_indices = []
+
+            for j in range(sim.N):
+                p = sim.particles[j]
+                d2 = p.x*p.x + p.y*p.y + p.z*p.z
+
+                if d2 > sim.exit_max_distance**2:
+                    escaped_indices.append(j)
+
+            for index in reversed(escaped_indices):
+                print(f"Removing escaped particle at index {index}")
+                sim.remove(index=index)
+
+            print(f"Remaining particles: {sim.N}")
+
+    total_runtime = time.time() - start_walltime
+
+    print("\nSimulation complete.")
+    print(f"Total runtime: {format_time(total_runtime)}")
+
+    # Quick archive check
+    try:
+        sa = rebound.Simulationarchive(output_file)
+        print(f"Saved archive: {output_file}")
+        print(f"Number of snapshots saved: {len(sa)}")
+        print(f"Archive time range: {sa.tmin:.3e} yr to {sa.tmax:.3e} yr")
+    except Exception as error:
+        print(f"Could not verify archive: {error}")
+
+
+if __name__ == "__main__":
+    from config_utils import read_config, print_config
+
+    config = read_config("config.yaml")
+
+    seed = int(config["simulation"]["random_seed"])
+    np.random.seed(seed)
+    random.seed(seed)
+
+    print_config(config)
+    run_simulation(config)
