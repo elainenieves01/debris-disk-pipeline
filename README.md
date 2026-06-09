@@ -14,4 +14,5 @@ To recreate:
 
 ```bash
 conda env create -f environment.yml
+conda activate debris_pipeline
 ```
