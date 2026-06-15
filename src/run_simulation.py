@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 
 
+EARTH_MASS_TO_SOLAR_MASS = 3.0034896149156e-6
 JUPITER_MASS_TO_SOLAR_MASS = 9.5479e-4
 
 
@@ -87,11 +88,6 @@ def build_simulation(config):
     npl = int(config["dwarf_planets"]["N"])
     Npart = int(config["test_particles"]["N"])
 
-    mass_fraction = float(
-        config["dwarf_planets"]["mass_fraction_of_giant_planet"]
-    )
-
-    mdps = M_planet * mass_fraction
 
     sim = rebound.Simulation()
 
@@ -127,17 +123,80 @@ def build_simulation(config):
     sim.dt = timestep_fraction * sim.particles[1].P
 
     # Dwarf planets
-    for _ in range(npl):
-        sim.add(
-            primary=sim.particles[0],
-            m=mdps,
-            a=np.random.uniform(amin, amax),
-            e=np.random.uniform(emin, emax),
-            inc=np.random.uniform(imin, imax),
-            omega=random_angle(),
-            Omega=random_angle(),
-            M=random_angle(),
-        )
+    # -------------
+    # We support two ways of assigning dwarf planet mass:
+    #
+    # 1. Preferred new method:
+    #       dwarf_planets:
+    #           N: 500
+    #           total_mass_earth: 1.0
+    #
+    #    This means the full DP population has a total mass of 1 Earth mass.
+    #    Each DP receives an equal share of that mass.
+    #
+    # 2. Older method:
+    #       dwarf_planets:
+    #           N: 10
+    #           mass_fraction_of_giant_planet: 1.0e-8
+    #
+    #    This means each DP has a mass equal to a fraction of the giant planet mass.
+
+    if npl > 0:
+
+        if "total_mass_earth" in config["dwarf_planets"]:
+            total_mass_earth = float(
+                config["dwarf_planets"]["total_mass_earth"]
+            )
+
+            total_mass_solar = (
+                total_mass_earth * EARTH_MASS_TO_SOLAR_MASS
+            )
+
+            mdps = total_mass_solar / npl
+
+            print("\nDwarf planet mass setup:")
+            print(f"  Method: total_mass_earth")
+            print(f"  Number of DPs: {npl}")
+            print(f"  Total DP mass: {total_mass_earth:.6f} Earth masses")
+            print(f"  Individual DP mass: {mdps:.6e} Msun")
+
+        elif "mass_fraction_of_giant_planet" in config["dwarf_planets"]:
+            mass_fraction = float(
+                config["dwarf_planets"]["mass_fraction_of_giant_planet"]
+            )
+
+            mdps = M_planet * mass_fraction
+
+            print("\nDwarf planet mass setup:")
+            print(f"  Method: mass_fraction_of_giant_planet")
+            print(f"  Number of DPs: {npl}")
+            print(f"  Mass fraction per DP: {mass_fraction:.6e}")
+            print(f"  Individual DP mass: {mdps:.6e} Msun")
+
+        else:
+            raise ValueError(
+                "dwarf_planets must include either "
+                "'total_mass_earth' or 'mass_fraction_of_giant_planet'."
+            )
+
+        for _ in range(npl):
+            sim.add(
+                primary=sim.particles[0],
+                m=mdps,
+                a=np.random.uniform(amin, amax),
+                e=np.random.uniform(emin, emax),
+                inc=np.random.uniform(imin, imax),
+                omega=random_angle(),
+                Omega=random_angle(),
+                M=random_angle(),
+            )
+
+    else:
+        mdps = 0.0
+
+        print("\nDwarf planet mass setup:")
+        print("  Number of DPs: 0")
+        print("  No dwarf planets added.")
 
     sim.N_active = npl + 2
     sim.move_to_com()

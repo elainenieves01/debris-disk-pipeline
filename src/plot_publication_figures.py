@@ -143,16 +143,23 @@ def compute_summary(df):
 
 def compute_survival(df):
     """
-    Compute survival fraction by role.
+    Compute survival fraction by role, including zero after all particles
+    of that role have escaped.
     """
+
+    all_snapshots = (
+        df[["snapshot", "time_yr"]]
+        .drop_duplicates()
+        .sort_values("snapshot")
+    )
 
     rows = []
 
-    for role in sorted(df["role"].dropna().unique()):
-        if role == "star":
-            continue
-
+    for role in ["dwarf_planet", "test_particle", "giant_planet"]:
         sub = df[df["role"] == role]
+
+        if len(sub) == 0:
+            continue
 
         counts = (
             sub.groupby(["snapshot", "time_yr"])
@@ -160,11 +167,21 @@ def compute_survival(df):
             .reset_index(name="N")
         )
 
-        if len(counts) == 0:
+        counts = all_snapshots.merge(
+            counts,
+            on=["snapshot", "time_yr"],
+            how="left",
+        )
+
+        counts["N"] = counts["N"].fillna(0)
+
+        N_initial = counts["N"].iloc[0]
+
+        if N_initial == 0:
             continue
 
         counts["role"] = role
-        counts["survival_fraction"] = counts["N"] / counts["N"].iloc[0]
+        counts["survival_fraction"] = counts["N"] / N_initial
 
         rows.append(counts)
 
