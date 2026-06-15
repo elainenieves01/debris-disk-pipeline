@@ -144,6 +144,13 @@ def build_simulation(config):
 
     # Test particles
     for _ in range(Npart):
+        M_deg = config["disk"].get("M_deg", None)
+
+        if M_deg is None:
+            M_value = random_angle()
+        else:
+            M_value = np.radians(float(M_deg))
+
         sim.add(
             primary=sim.particles[0],
             a=np.random.uniform(amin, amax),
@@ -151,7 +158,7 @@ def build_simulation(config):
             inc=np.random.uniform(imin, imax),
             omega=random_angle(),
             Omega=random_angle(),
-            M=random_angle(),
+            M=M_value,
         )
 
     return sim
