@@ -2,6 +2,9 @@ import os
 import time
 import random
 import rebound
+import sys
+from config_utils import read_config
+from pathlib import Path
 import numpy as np
 
 
@@ -160,11 +163,15 @@ def run_simulation(config):
 
     times = np.linspace(0.0, maxtime, Noutputs)
 
-    output_file = config["simulation"]["output_file"]
-    output_dir = os.path.dirname(output_file)
+    sim_name = config["simulation"]["name"]
+    base_output_dir = config["simulation"].get("output_dir", "outputs")
 
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    run_output_dir = os.path.join(base_output_dir, sim_name)
+    os.makedirs(run_output_dir, exist_ok=True)
+
+    output_file = os.path.join(run_output_dir, f"{sim_name}.bin")
+
+    print(f"Saving SimulationArchive to: {output_file}")
 
     if os.path.exists(output_file):
         os.remove(output_file)
@@ -181,7 +188,7 @@ def run_simulation(config):
         try:
             sim.integrate(int_time)
 
-            sim.simulationarchive_snapshot(output_file)
+            sim.save_to_file(output_file)
 
             E1 = sim.energy()
 
@@ -236,13 +243,16 @@ def run_simulation(config):
 
 
 if __name__ == "__main__":
-    from config_utils import read_config, print_config
 
-    config = read_config("config.yaml")
+    if len(sys.argv) != 2:
+        print("Usage:")
+        print("python src/run_simulation.py config/config.yaml")
+        sys.exit(1)
 
-    seed = int(config["simulation"]["random_seed"])
-    np.random.seed(seed)
-    random.seed(seed)
+    config_path = sys.argv[1]
 
-    print_config(config)
+    print(f"Reading configuration from: {config_path}")
+
+    config = read_config(config_path)
+
     run_simulation(config)

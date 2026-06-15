@@ -11,8 +11,8 @@ units:
 integration:
   integrator: "whfast"
   timestep_fraction_of_planet_period: 0.1
-  maxtime: 1000000.0
-  Noutputs: 20
+  maxtime: 50.0
+  Noutputs: 6
   exit_max_distance: 1000.0
 
 star:
@@ -39,11 +39,11 @@ disk:
   imax_deg: 5.0
 
 dwarf_planets:
-  N: 10
-  mass_fraction_of_giant_planet: 1.0e-5
+  N: 2
+  mass_fraction_of_giant_planet: 1.0e-8
 
 test_particles:
-  N: 1000
+  N: 5
   distribution: "uniform"
 
 plots:
@@ -61,7 +61,7 @@ plots:
       ylim: [0,0.2]
 
     ai:
-      xlim: [0,200]
+      xlim: null
       ylim: null
 
     e_evolution:
