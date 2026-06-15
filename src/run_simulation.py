@@ -185,47 +185,46 @@ def run_simulation(config):
     start_walltime = time.time()
 
     for i, int_time in enumerate(times):
+
         try:
             sim.integrate(int_time)
 
-            sim.save_to_file(output_file)
-
-            E1 = sim.energy()
-
-            elapsed_total = time.time() - start_walltime
-            completed_outputs = i + 1
-            avg_time_per_output = elapsed_total / completed_outputs
-            remaining_outputs = Noutputs - completed_outputs
-            estimated_remaining = avg_time_per_output * remaining_outputs
-
-            print(f"\nOutput {completed_outputs}/{Noutputs}")
-            print(f"Simulation time = {int_time:.3e} yr")
-            print(f"dE/E0 = {(E1 - E0) / E0:.3e}")
-            print(f"Current particles = {sim.N}")
-
-            if completed_outputs >= 2:
-                print(
-                    "Estimated time remaining: "
-                    f"{format_time(estimated_remaining)}"
-                )
 
         except rebound.Escape as error:
             print(error)
 
+            exit_max_distance = float(
+                config["integration"]["exit_max_distance"]
+            )
+
             escaped_indices = []
 
-            for j in range(sim.N):
-                p = sim.particles[j]
-                d2 = p.x*p.x + p.y*p.y + p.z*p.z
+            for index in range(1, sim.N):  # skip the star
+                p = sim.particles[index]
+                r = np.sqrt(p.x**2 + p.y**2 + p.z**2)
 
-                if d2 > sim.exit_max_distance**2:
-                    escaped_indices.append(j)
+                if r > exit_max_distance:
+                    escaped_indices.append(index)
 
             for index in reversed(escaped_indices):
                 print(f"Removing escaped particle at index {index}")
-                sim.remove(index=index)
+                sim.remove(index)
 
-            print(f"Remaining particles: {sim.N}")
+                print(f"Remaining particles: {sim.N}")
+        
+        sim.save_to_file(output_file)
+
+        E1 = sim.energy()
+        dE = abs((E1 - E0) / E0)
+
+        print(
+            f"Output {i+1}/{Noutputs}: "
+            f"t={sim.t:.1f} yr, "
+            f"dE/E0={dE:.2e}, "
+            f"N={sim.N}"
+        )
+
+               
 
     total_runtime = time.time() - start_walltime
 
