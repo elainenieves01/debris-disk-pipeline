@@ -620,7 +620,16 @@ def build_simulation(config):
 
     sim.integrator = config["integration"]["integrator"]
     sim.collision = "none"
-    sim.exit_max_distance = float(config["integration"]["exit_max_distance"])
+    # Do NOT use REBOUND's exit_max_distance for this pipeline.
+    #
+    # REBOUND raises rebound.Escape immediately when any particle crosses
+    # sim.exit_max_distance. That interrupts the regular output sequence and
+    # can leave the proper-element time series with too few samples.
+    #
+    # Instead, we use our own manual removal criterion at regular output times
+    # inside run_simulation(). Setting REBOUND's value to a huge number keeps
+    # the integrator from stopping prematurely.
+    sim.exit_max_distance = float(config["integration"].get("rebound_exit_max_distance", 1.0e12))
 
     # ------------------------------------------------------------
     # Add the star
@@ -933,6 +942,11 @@ def run_simulation(config):
     sun_collision_distance = float(config["integration"].get("sun_collision_distance", 0.01))
     min_perihelion = float(config["integration"].get("min_perihelion", 0.3))
 
+    # Manual ejection threshold used only at regular output times.
+    # This avoids REBOUND Escape exceptions and preserves the proper-element
+    # sampling cadence.
+    manual_exit_distance = float(config["integration"].get("exit_max_distance", 1000.0))
+
     for i, int_time in enumerate(times):
         try:
             # For WHFast, avoid forcing the integration to finish exactly
@@ -978,7 +992,7 @@ def run_simulation(config):
                 r_sun = np.sqrt(r_sun2)
 
                 # Remove particles ejected far from the Sun.
-                if r_sun > sim.exit_max_distance:
+                if r_sun > manual_exit_distance:
                     mark_lost(sim, initial_conditions, particle_id, "ejected")
                     continue
 
@@ -1073,8 +1087,19 @@ def run_simulation(config):
                 print()
 
         except rebound.Escape:
-            # REBOUND can raise an Escape exception when a particle crosses
-            # sim.exit_max_distance. We identify and remove such particles.
+            # REBOUND stops the integration as soon as one particle crosses
+            # sim.exit_max_distance. If we simply continue to the next output
+            # time, we skip output samples and the proper-element time series
+            # remains too short. Therefore, we remove all escaped test particles
+            # found at this interrupted time, then continue the outer loop.
+            #
+            # NOTE: This block does not save a regular output sample, because
+            # sim.t is not equal to the requested output time. The next successful
+            # integration call will save a normal sample.
+            escaped_ids = []
+
+            sun = sim.particles[0]
+
             for particle_id, ic in initial_conditions.items():
                 if ic["status"] == "lost":
                     continue
@@ -1088,20 +1113,36 @@ def run_simulation(config):
                     continue
 
                 p = sim.particles[index]
-                sun = sim.particles[0]
 
                 dx = p.x - sun.x
                 dy = p.y - sun.y
                 dz = p.z - sun.z
                 r_sun = np.sqrt(dx*dx + dy*dy + dz*dz)
 
-                if r_sun > sim.exit_max_distance:
-                    mark_lost(sim, initial_conditions, particle_id, "ejected")
-                    print(
-                        f"    Particle {particle_id} escaped at "
-                        f"t = {sim.t:.3e} yr "
-                        f"(r > {sim.exit_max_distance}), remaining: {sim.N}"
-                    )
+                if r_sun > manual_exit_distance:
+                    escaped_ids.append(particle_id)
+
+            # Remove in reverse REBOUND index order so index shifting is safe.
+            escaped_ids.sort(
+                key=lambda pid: initial_conditions[pid]["particle_index"],
+                reverse=True,
+            )
+
+            for particle_id in escaped_ids:
+                mark_lost(sim, initial_conditions, particle_id, "ejected")
+                print(
+                    f"    Particle {particle_id} escaped at "
+                    f"t = {sim.t:.3e} yr "
+                    f"(r > {manual_exit_distance}), remaining: {sim.N}"
+                )
+
+            if len(escaped_ids) == 0:
+                print(
+                    "Warning: REBOUND raised Escape, but no escaped test "
+                    "particle was found. In v3 this should almost never "
+                    "happen because REBOUND's internal escape boundary is "
+                    "set to a huge value. Check rebound_exit_max_distance."
+                )
 
     total_runtime = time.time() - start_walltime
 

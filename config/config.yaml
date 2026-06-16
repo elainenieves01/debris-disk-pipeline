@@ -13,7 +13,7 @@ integration:
   timestep_days: 20
   maxtime: 300000.0
   output_interval: 20.0
-  exit_max_distance: 10.0
+  exit_max_distance: 100.0
 
 star:
   mass: 1.0
