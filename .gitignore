@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# Outputs
+outputs/*
+!outputs/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+config/generated/*
+!config/generated/.gitkeep
+
+# Large simulation files
+*.bin
+*.parquet
+*.hdf5
+*.h5
+*.csv
+
+# Keep input folder but avoid committing run tables by accident
+inputs/*
+!inputs/.gitkeep
+
+# System files
+.DS_Store
+Thumbs.db
