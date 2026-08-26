@@ -5,12 +5,13 @@ import rebound
 import sys
 
 _SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-for _subdir in ("config_io", "plotting", "diagnostics"):
+for _subdir in ("config_io", "plotting", "diagnostics", "utilities"):
     sys.path.insert(0, os.path.join(_SRC_DIR, "..", _subdir))
 
 from config_utils import read_config
 from summary_figures import generate_summary_figures
 from report import generate_report
+from tee_output import start_capturing_stdout, stop_capturing_stdout
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -320,6 +321,8 @@ def get_particles(snap_number, sim):
 
 
 def run_simulation(config, config_path=None):
+    terminal_buffer = start_capturing_stdout()
+
     maxtime = float(config["integration"]["maxtime"])
     time_step = (config["integration"]["time_step"])
 
@@ -510,7 +513,15 @@ def run_simulation(config, config_path=None):
         generate_summary_figures(output_file, config, run_output_dir)
 
         report_path = os.path.join(run_output_dir, f"{sim_name}_report.md")
-        generate_report(config, config_path, output_file, report_path)
+        generate_report(
+            config,
+            config_path,
+            output_file,
+            report_path,
+            terminal_output=terminal_buffer.getvalue(),
+        )
+
+    stop_capturing_stdout()
 
 
 if __name__ == "__main__":

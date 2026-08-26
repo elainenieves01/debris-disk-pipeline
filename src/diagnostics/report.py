@@ -43,11 +43,14 @@ def _format_mass_fraction_config(config):
     return "unspecified"
 
 
-def generate_report(config, config_path, archive_path, output_path):
+def generate_report(config, config_path, archive_path, output_path, terminal_output=None):
     """
     Write a Markdown report summarizing the YAML config used for a run,
     including whether the massive planetesimal mass is uniform and, if so,
     what it is.
+
+    `terminal_output`, if given, is the run's captured console output,
+    appended as its own section.
     """
     sim_cfg = config["simulation"]
     units_cfg = config["units"]
@@ -153,6 +156,14 @@ def generate_report(config, config_path, archive_path, output_path):
     lines.append(f"- Archive time range: {sa.tmin:.6e} to {sa.tmax:.6e}")
     lines.append(f"- Number of snapshots: {len(sa)}")
     lines.append("")
+
+    if terminal_output:
+        lines.append("## Terminal Output")
+        lines.append("")
+        lines.append("```")
+        lines.append(terminal_output.rstrip("\n"))
+        lines.append("```")
+        lines.append("")
 
     with open(output_path, "w", encoding="utf-8") as file:
         file.write("\n".join(lines))
