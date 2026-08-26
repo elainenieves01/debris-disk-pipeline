@@ -9,7 +9,7 @@ for _subdir in ("config_io", "plotting", "diagnostics"):
     sys.path.insert(0, os.path.join(_SRC_DIR, "..", _subdir))
 
 from config_utils import read_config
-from condition_plots import plot_initial_and_final_conditions
+from summary_figures import generate_summary_figures
 from report import generate_report
 from pathlib import Path
 import numpy as np
@@ -507,7 +507,7 @@ def run_simulation(config, config_path=None):
     plots_enabled = bool(config.get("plots", {}).get("enabled", False))
 
     if plots_enabled:
-        plot_initial_and_final_conditions(output_file, config, run_output_dir)
+        generate_summary_figures(output_file, config, run_output_dir)
 
         report_path = os.path.join(run_output_dir, f"{sim_name}_report.md")
         generate_report(config, config_path, output_file, report_path)
