@@ -431,7 +431,36 @@ def run_simulation(config):
                 sim.remove(index)
 
                 print(f"Remaining particles: {sim.N}")
-        
+
+        # Keep only bound orbits: drop anything that has gone hyperbolic/
+        # parabolic (e > 1) or picked up an invalid eccentricity (e < 0).
+        unbound_indices = []
+
+        for index in range(1, sim.N):  # skip the star
+            p = sim.particles[index]
+
+            if p.e > 1.0 or p.e < 0.0:
+                unbound_indices.append(index)
+
+        for index in reversed(unbound_indices):
+            p = sim.particles[index]
+            name = p.name
+
+            if name.startswith("TP_"):
+                role = "Test particle"
+            elif name.startswith("MP_"):
+                role = "Massive planetesimal"
+            else:
+                role = name
+
+            print(
+                f"{role} was removed at index {index} for unbound orbit "
+                f"(e={p.e:.6f})"
+            )
+            sim.remove(index)
+
+            print(f"Remaining particles: {sim.N}")
+
         sim.save_to_file(output_file)
 
         E1 = sim.energy()
