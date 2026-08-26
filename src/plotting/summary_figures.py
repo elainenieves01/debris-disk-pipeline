@@ -70,9 +70,16 @@ def build_snapshot_table(archive_path):
                 inc_deg = np.nan
             else:
                 role = _role_for_name(name)
-                a = p.a
-                e = p.e
-                inc_deg = np.rad2deg(p.inc)
+                # Explicitly orbit relative to the star. The bare p.a/p.e/p.inc
+                # shorthand computes the orbit relative to the coordinate
+                # origin, which after sim.move_to_com() is the system
+                # barycenter, not the star -- that mismatch shows up as a
+                # roughly constant spurious eccentricity/inclination offset
+                # that swamps real secular evolution.
+                orbit = p.orbit(primary=sim.particles[0])
+                a = orbit.a
+                e = orbit.e
+                inc_deg = np.rad2deg(orbit.inc)
 
             records.append(
                 {
