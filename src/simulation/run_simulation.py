@@ -4,11 +4,13 @@ import random
 import rebound
 import sys
 
-sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config_io")
-)
+_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+for _subdir in ("config_io", "plotting", "diagnostics"):
+    sys.path.insert(0, os.path.join(_SRC_DIR, "..", _subdir))
 
 from config_utils import read_config
+from condition_plots import plot_initial_and_final_conditions
+from report import generate_report
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -317,7 +319,7 @@ def get_particles(snap_number, sim):
 
 
 
-def run_simulation(config):
+def run_simulation(config, config_path=None):
     maxtime = float(config["integration"]["maxtime"])
     time_step = (config["integration"]["time_step"])
 
@@ -502,6 +504,14 @@ def run_simulation(config):
     except Exception as error:
         print(f"Could not verify archive: {error}")
 
+    plots_enabled = bool(config.get("plots", {}).get("enabled", False))
+
+    if plots_enabled:
+        plot_initial_and_final_conditions(output_file, config, run_output_dir)
+
+        report_path = os.path.join(run_output_dir, f"{sim_name}_report.md")
+        generate_report(config, config_path, output_file, report_path)
+
 
 if __name__ == "__main__":
 
@@ -516,4 +526,4 @@ if __name__ == "__main__":
 
     config = read_config(config_path)
 
-    run_simulation(config)
+    run_simulation(config, config_path=config_path)
