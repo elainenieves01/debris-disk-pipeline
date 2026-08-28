@@ -25,16 +25,31 @@ def _massive_planetesimal_mass_summary(sim):
     return masses.size, mass_msun, uniform, masses
 
 
-def _format_mass_fraction_config(config):
+def _format_mass_assignment_config(config):
     mp_config = config["massive_planetesimals"]
 
-    if "total_mass_earth" in mp_config:
+    if mp_config.get("total_disk_mass_earth") is not None:
         return (
-            f"total_mass_earth = {float(mp_config['total_mass_earth']):.6f} "
-            f"Earth masses (split evenly across N)"
+            f"total_disk_mass_earth = "
+            f"{float(mp_config['total_disk_mass_earth']):.6e} "
+            f"Earth masses (total disk mass, split evenly across N)"
         )
 
-    if "mass_fraction_of_giant_planet" in mp_config:
+    if mp_config.get("total_mass_earth") is not None:
+        return (
+            f"total_mass_earth = {float(mp_config['total_mass_earth']):.6e} "
+            f"Earth masses (deprecated alias of total_disk_mass_earth; "
+            f"split evenly across N)"
+        )
+
+    if mp_config.get("individual_MP_mass_plutos") is not None:
+        return (
+            f"individual_MP_mass_plutos = "
+            f"{float(mp_config['individual_MP_mass_plutos']):.6e} "
+            f"Pluto masses per planetesimal (total disk mass = value * N)"
+        )
+
+    if mp_config.get("mass_fraction_of_giant_planet") is not None:
         return (
             f"mass_fraction_of_giant_planet = "
             f"{float(mp_config['mass_fraction_of_giant_planet']):.6e}"
@@ -56,7 +71,7 @@ def generate_report(config, config_path, archive_path, output_path, terminal_out
     units_cfg = config["units"]
     integration_cfg = config["integration"]
     star_cfg = config["star"]
-    gp_cfg = config["giant_planet"]
+    gp_cfg = config.get("giant_planet")
     disk_cfg = config["disk"]
     mp_cfg = config["massive_planetesimals"]
     tp_cfg = config["test_particles"]
@@ -105,13 +120,16 @@ def generate_report(config, config_path, archive_path, output_path, terminal_out
     lines.append("")
 
     lines.append("## Giant Planet")
-    lines.append(f"- Mass: {gp_cfg['mass_jupiter']} Mjup")
-    lines.append(f"- a: {gp_cfg['a']} au, e: {gp_cfg['e']}, inc: {gp_cfg['inc_deg']} deg")
-    lines.append(f"- omega: {gp_cfg['omega_deg']} deg, Omega random: {gp_cfg['Omega_random']}")
-    lines.append(
-        f"- t_peri_jd: {gp_cfg['t_peri_jd']}, orbital_period_days: "
-        f"{gp_cfg['orbital_period_days']}, epoch_jd: {gp_cfg['epoch_jd']}"
-    )
+    if gp_cfg is None:
+        lines.append("- None (disk integrated around the star alone)")
+    else:
+        lines.append(f"- Mass: {gp_cfg['mass_jupiter']} Mjup")
+        lines.append(f"- a: {gp_cfg['a']} au, e: {gp_cfg['e']}, inc: {gp_cfg['inc_deg']} deg")
+        lines.append(f"- omega: {gp_cfg['omega_deg']} deg, Omega random: {gp_cfg['Omega_random']}")
+        lines.append(
+            f"- t_peri_jd: {gp_cfg['t_peri_jd']}, orbital_period_days: "
+            f"{gp_cfg['orbital_period_days']}, epoch_jd: {gp_cfg['epoch_jd']}"
+        )
     lines.append("")
 
     lines.append("## Disk")
@@ -124,7 +142,7 @@ def generate_report(config, config_path, archive_path, output_path, terminal_out
 
     lines.append("## Massive Planetesimals")
     lines.append(f"- N: {mp_cfg['N']}")
-    lines.append(f"- Mass-assignment method (config): {_format_mass_fraction_config(config)}")
+    lines.append(f"- Mass-assignment method (config): {_format_mass_assignment_config(config)}")
 
     if n_mp == 0:
         lines.append("- No massive planetesimals present in the initial snapshot.")

@@ -26,7 +26,6 @@ def validate_config(config):
         "units",
         "integration",
         "star",
-        "giant_planet",
         "disk",
         "massive_planetesimals",
         "test_particles",
@@ -35,6 +34,9 @@ def validate_config(config):
     for section in required_sections:
         if section not in config:
             raise KeyError(f"Missing required section in config.yaml: {section}")
+
+    # "giant_planet" is optional: it may be omitted entirely or set to null
+    # to integrate the disk around the star alone.
 
 
 def print_config(config):

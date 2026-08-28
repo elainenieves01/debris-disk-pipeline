@@ -3,6 +3,7 @@ import time
 import random
 import rebound
 import sys
+import urllib.request
 
 _SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 for _subdir in ("config_io", "plotting", "diagnostics", "utilities"):
@@ -20,7 +21,56 @@ import json
 
 EARTH_MASS_TO_SOLAR_MASS = 3.0034896149156e-6
 JUPITER_MASS_TO_SOLAR_MASS = 9.5479e-4
+# Pluto mass 1.303e22 kg / solar mass 1.98892e30 kg
+PLUTO_MASS_TO_SOLAR_MASS = 6.55135e-9
+SOLAR_MASS_G = 1.98892e33
+PLUTO_DIAMETER_KM = 2376.6  # Stern et al. 2015 (New Horizons)
 
+
+def sphere_diameter_from_mass(mass_solar, density_g_per_cm3=1.0):
+    """Diameter of a uniform sphere with the given mass and density.
+
+    mass_solar is in solar masses; density defaults to 1 g/cm**3.
+    Returns the diameter in kilometres.
+    """
+    mass_g = mass_solar * SOLAR_MASS_G
+    volume_cm3 = mass_g / density_g_per_cm3
+    radius_cm = (3.0 * volume_cm3 / (4.0 * np.pi)) ** (1.0 / 3.0)
+    return 2.0 * radius_cm / 1.0e5  # cm -> km
+
+
+
+def send_ntfy(config, title, message):
+    """POST a one-line status to the configured ntfy topic. Never raises.
+
+    Controlled by an optional top-level "notify" section in the config:
+
+        notify:
+          enabled: true
+          ntfy_topic: "https://ntfy.sh/your-topic"
+
+    If the section is missing, disabled, or has no topic, this is a no-op.
+    """
+    notify_cfg = config.get("notify") or {}
+
+    if not notify_cfg.get("enabled"):
+        return
+
+    topic = notify_cfg.get("ntfy_topic")
+    if not topic:
+        print("WARNING: notify.enabled is true but notify.ntfy_topic is unset.")
+        return
+
+    try:
+        request = urllib.request.Request(
+            topic,
+            data=message.encode("utf-8"),
+            headers={"Title": title},
+            method="POST",
+        )
+        urllib.request.urlopen(request, timeout=10)
+    except Exception as error:
+        print(f"WARNING: ntfy notification failed: {error}")
 
 
 def random_angle():
@@ -65,6 +115,32 @@ def format_time(seconds):
     return ", ".join(parts) if parts else "0 seconds"
 
 
+def choose_timestep(sim, config, has_giant_planet, Mstar, a_ref):
+    """Pick the integrator timestep.
+
+    With a giant planet, use a fraction of its orbital period (particle 1).
+    Without one, use the same fraction of a circular orbital period at
+    ``a_ref`` (the inner edge of the disk) around the star.
+    """
+    fraction = float(
+        config["integration"]["timestep_fraction_of_planet_period"]
+    )
+
+    if has_giant_planet:
+        ref_period = sim.particles[1].P
+        basis = "giant planet orbital period"
+    else:
+        ref_period = 2.0 * np.pi * np.sqrt(a_ref ** 3 / (sim.G * Mstar))
+        basis = f"circular period at a={a_ref:g} (disk inner edge)"
+
+    dt = fraction * ref_period
+    print(
+        f"  Timestep: {dt:.6e} "
+        f"({fraction:g} x {basis} = {ref_period:.6e})"
+    )
+    return dt
+
+
 def build_simulation(config):
 
     random_seed = 42
@@ -72,24 +148,31 @@ def build_simulation(config):
     
     Mstar = float(config["star"]["mass"])
 
-    gp = config["giant_planet"]
+    # The giant planet is optional. Set "giant_planet: null" in the config
+    # (or omit the section) to integrate the disk around the star alone.
+    gp = config.get("giant_planet")
+    has_giant_planet = gp is not None
 
-    M_planet = float(gp["mass_jupiter"]) * JUPITER_MASS_TO_SOLAR_MASS
-    a_planet = float(gp["a"])
-    e_planet = float(gp["e"])
-    inc_planet = np.deg2rad(float(gp["inc_deg"]))
-    omega_planet = np.deg2rad(float(gp["omega_deg"]))
+    if has_giant_planet:
+        M_planet = float(gp["mass_jupiter"]) * JUPITER_MASS_TO_SOLAR_MASS
+        a_planet = float(gp["a"])
+        e_planet = float(gp["e"])
+        inc_planet = np.deg2rad(float(gp["inc_deg"]))
+        omega_planet = np.deg2rad(float(gp["omega_deg"]))
 
-    t_peri = float(gp["t_peri_jd"])
-    orbital_period = float(gp["orbital_period_days"])
-    epoch_t = float(gp["epoch_jd"])
+        t_peri = float(gp["t_peri_jd"])
+        orbital_period = float(gp["orbital_period_days"])
+        epoch_t = float(gp["epoch_jd"])
 
-    MA_planet = (2.0 * np.pi / orbital_period) * (epoch_t - t_peri)
+        MA_planet = (2.0 * np.pi / orbital_period) * (epoch_t - t_peri)
 
-    if gp["Omega_random"]:
-        Omega_planet = random_angle()
+        if gp["Omega_random"]:
+            Omega_planet = random_angle()
+        else:
+            Omega_planet = 0.0
     else:
-        Omega_planet = 0.0
+        M_planet = 0.0
+        print("\nNo giant planet: integrating the disk around the star alone.")
 
     disk = config["disk"]
 
@@ -117,7 +200,6 @@ def build_simulation(config):
     sim.integrator = config["integration"]["integrator"]
 
     sim.exit_max_distance = float(config["integration"]["exit_max_distance"])
-    print(config["simulation"]["dump"])
     file_path = Path("dump_data.json")
 
     dump_condition = config['simulation']["dump"]
@@ -145,12 +227,13 @@ def build_simulation(config):
             sim_time = particle["time"]
 
         sim.t = sim_time
-        sim.N_active = npl + 2
-
-        timestep_fraction = float(
-            config["integration"]["timestep_fraction_of_planet_period"]
+        sim.N_active = sum(
+            1 for name in dump_data if not name.startswith("TP_")
         )
-        sim.dt = timestep_fraction * sim.particles[1].P
+
+        sim.dt = choose_timestep(
+            sim, config, has_giant_planet, Mstar, amin
+        )
 
         print(
             f"Restored simulation from snapshot number at t={sim.t:.6e} yr "
@@ -162,83 +245,118 @@ def build_simulation(config):
     # Star
     sim.add(m=Mstar, name="star")
 
-    # Giant planet
-    sim.add(
-        primary=sim.particles[0],
-        m=M_planet,
-        a=a_planet,
-        e=e_planet,
-        inc=inc_planet,
-        omega=omega_planet,
-        Omega=Omega_planet,
-        M=MA_planet,
-        name= "GP"
-    )
+    # Giant planet (optional)
+    if has_giant_planet:
+        sim.add(
+            primary=sim.particles[0],
+            m=M_planet,
+            a=a_planet,
+            e=e_planet,
+            inc=inc_planet,
+            omega=omega_planet,
+            Omega=Omega_planet,
+            M=MA_planet,
+            name="GP",
+        )
 
-    timestep_fraction = float(
-        config["integration"]["timestep_fraction_of_planet_period"]
-    )
-
-    sim.dt = timestep_fraction * sim.particles[1].P
+    sim.dt = choose_timestep(sim, config, has_giant_planet, Mstar, amin)
 
     # Massive planetesimals
-    # -------------
-    # We support two ways of assigning massive planetesimal mass:
+    # ---------------------
+    # Planetesimal masses are set by EXACTLY ONE of these keys under
+    # "massive_planetesimals" (value not null):
     #
-    # 1. Preferred new method:
-    #       massive_planetesimals:
-    #           N: 500
-    #           total_mass_earth: 1.0
+    #   total_disk_mass_earth: M
+    #       M is the TOTAL mass of the planetesimal disk, in Earth masses.
+    #       Each of the N planetesimals gets an equal share, M / N.
     #
-    #    This means the full MP population has a total mass of 1 Earth mass.
-    #    Each MP receives an equal share of that mass.
+    #   individual_MP_mass_plutos: m
+    #       m is the mass of a SINGLE planetesimal, in Pluto masses.
+    #       The total disk mass is then m * N.
     #
-    # 2. Older method:
-    #       massive_planetesimals:
-    #           N: 10
-    #           mass_fraction_of_giant_planet: 1.0e-8
+    #   mass_fraction_of_giant_planet: f   (legacy)
+    #       Each planetesimal has mass f * M_giant_planet. Requires a
+    #       giant planet.
     #
-    #    This means each MP has a mass equal to a fraction of the giant planet mass.
-    # "massive_planetesimals" used to be referred to as dwarf_planets
+    # "total_mass_earth" is accepted as a deprecated alias for
+    # "total_disk_mass_earth".
+    # "massive_planetesimals" used to be referred to as dwarf_planets.
 
     if npl > 0:
-        if "total_mass_earth" in config["massive_planetesimals"]:
-            total_mass_earth = float(
-                config["massive_planetesimals"]["total_mass_earth"]
+        mp_cfg = config["massive_planetesimals"]
+
+        if mp_cfg.get("total_mass_earth") is not None:
+            print(
+                "\nWARNING: 'total_mass_earth' is deprecated; "
+                "use 'total_disk_mass_earth'."
             )
+            if mp_cfg.get("total_disk_mass_earth") is not None:
+                raise ValueError(
+                    "massive_planetesimals sets both 'total_mass_earth' and "
+                    "'total_disk_mass_earth'. Keep only 'total_disk_mass_earth'."
+                )
+            mp_cfg = {
+                **mp_cfg,
+                "total_disk_mass_earth": mp_cfg["total_mass_earth"],
+            }
 
-            total_mass_solar = (
-                total_mass_earth * EARTH_MASS_TO_SOLAR_MASS
-            )
+        MASS_KEYS = (
+            "total_disk_mass_earth",
+            "individual_MP_mass_plutos",
+            "mass_fraction_of_giant_planet",
+        )
+        present = [k for k in MASS_KEYS if mp_cfg.get(k) is not None]
 
-            m_mps = total_mass_solar / npl
-
-            print("\n Massive planetesimals mass setup:")
-            print(f"  Method: total_mass_earth")
-            print(f"  Number of MPs: {npl}")
-            print(f"  Total MP mass: {total_mass_earth:.6f} Earth masses")
-            print(f"  Individual MP mass: {m_mps:.6e} Msun")
-
-        elif "mass_fraction_of_giant_planet" in config["massive_planetesimals"]:
-            mass_fraction = float(
-                config["massive_planetesimals"]["mass_fraction_of_giant_planet"]
-            )
-
-            m_mps = M_planet * mass_fraction
-
-            print("\n Massive planetesimals mass setup:")
-            print(f"  Method: mass_fraction_of_giant_planet")
-            print(f"  Number of MPs: {npl}")
-            print(f"  Mass fraction per MP: {mass_fraction:.6e}")
-            print(f"  Individual MP mass: {m_mps:.6e} Msun")
-
-        else:
+        if len(present) != 1:
             raise ValueError(
-                "massive_planetesimals must include either "
-                "'total_mass_earth' or 'mass_fraction_of_giant_planet'."
+                "massive_planetesimals must set exactly one of "
+                f"{MASS_KEYS} (found: {present or 'none'})."
             )
 
+        mode = present[0]
 
+        if mode == "total_disk_mass_earth":
+            total_disk_mass_earth = float(mp_cfg["total_disk_mass_earth"])
+            m_mps = total_disk_mass_earth * EARTH_MASS_TO_SOLAR_MASS / npl
+            mode_note = "total disk mass given; divided evenly among N"
+
+        elif mode == "individual_MP_mass_plutos":
+            individual_MP_mass_plutos = float(mp_cfg["individual_MP_mass_plutos"])
+            m_mps = individual_MP_mass_plutos * PLUTO_MASS_TO_SOLAR_MASS
+            mode_note = "per-planetesimal mass given; disk mass = m * N"
+
+        else:  # mass_fraction_of_giant_planet
+            if not has_giant_planet:
+                raise ValueError(
+                    "massive_planetesimals uses 'mass_fraction_of_giant_planet' "
+                    "but there is no giant planet. Use 'total_disk_mass_earth' "
+                    "or 'individual_MP_mass_plutos' instead."
+                )
+            mass_fraction = float(mp_cfg["mass_fraction_of_giant_planet"])
+            m_mps = M_planet * mass_fraction
+            mode_note = "fraction of giant-planet mass, per planetesimal"
+
+        m_mps_pluto = m_mps / PLUTO_MASS_TO_SOLAR_MASS
+        m_mps_earth = m_mps / EARTH_MASS_TO_SOLAR_MASS
+        total_disk_earth = m_mps_earth * npl
+        mp_diameter_km = sphere_diameter_from_mass(m_mps, density_g_per_cm3=1.0)
+
+        print("\nMassive planetesimal mass setup:")
+        print(f"  Mode: {mode}  ({mode_note})")
+        print(f"  Number of planetesimals: {npl}")
+        print(
+            f"  Individual MP mass: {m_mps_pluto:.6e} Pluto masses / "
+            f"{m_mps_earth:.6e} Earth masses / {m_mps:.6e} Msun"
+        )
+        print(
+            f"  Individual MP diameter: {mp_diameter_km:.3f} km "
+            f"({mp_diameter_km / PLUTO_DIAMETER_KM:.6e} Pluto diameters) "
+            f"(uniform sphere, rho = 1 g/cm**3)"
+        )
+        print(
+            f"  Total disk mass: {total_disk_earth:.6e} Earth masses "
+            f"({m_mps * npl:.6e} Msun)"
+        )
 
         for i in range(npl):
 
@@ -258,11 +376,11 @@ def build_simulation(config):
     else:
         m_mps = 0.0
 
-        print("\n Massive_planetesimalsmass setup:")
+        print("\nMassive planetesimal mass setup:")
         print("  Number of MPs: 0")
-        print("  No massive_planetesimals added.")
+        print("  No massive planetesimals added.")
 
-    sim.N_active = npl + 2
+    sim.N_active = npl + (2 if has_giant_planet else 1)
     sim.move_to_com()
 
     # Test particles
@@ -333,13 +451,8 @@ def run_simulation(config, config_path=None):
         with open(file_path, "r", encoding="utf-8") as file:
             dump_data = json.load(file)
         start_time = dump_data["star"]['time']
-    print(f'{start_time=}')
-    print(f'{maxtime=}')
-    print(f'{time_step=}')
     times = np.arange(start_time, maxtime+1, time_step)
-    print(times)
-    
-    
+
 
     sim_name = config["simulation"]["name"]
     base_output_dir = config["simulation"].get("output_dir", "outputs")
@@ -381,13 +494,6 @@ def run_simulation(config, config_path=None):
 
     sim = build_simulation(config)
 
-    # print(f"time = {times}")
-    # print(f"sim.dt={sim.t}, sim.particles= {sim.particles}")
-    # for i, p in enumerate(sim.particles):
-    #     print(f'{i} name= {p.name}')
-    #     print(f'x= {p.x} y= {p.y} z= {p.z}')
-   #exit()
-
     E0 = sim.energy()
 
     print("\nBeginning the main integration")
@@ -396,24 +502,11 @@ def run_simulation(config, config_path=None):
 
     for i, int_time in enumerate(times):
 
-        # if i == 10:
-        #     exit()
-
         if dump_condition:
             get_particles(i,sim)
-    
+
         try:
-            #print(f"time = {times}")
-            #print(f"sim.dt={sim.t}, sim.particles= {sim.particles}")
-            #for i, p in enumerate(sim.particles):
-                #print(i)
-                #print(f'x= {p.x} y= {p.y} z= {p.z}')
-                
-
-            #exit()
             sim.integrate(int_time)
-            
-
 
         except rebound.Escape as error:
             print(error)
@@ -499,8 +592,10 @@ def run_simulation(config, config_path=None):
     print(f"Total runtime: {format_time(total_runtime)}")
 
     # Quick archive check
+    initial_N = None
     try:
         sa = rebound.Simulationarchive(output_file)
+        initial_N = sa[0].N
         print(f"Saved archive: {output_file}")
         print(f"Number of snapshots saved: {len(sa)}")
         print(f"Archive time range: {sa.tmin:.3e} yr to {sa.tmax:.3e} yr")
@@ -521,6 +616,16 @@ def run_simulation(config, config_path=None):
             terminal_output=terminal_buffer.getvalue(),
         )
 
+    n_summary = (
+        f"{initial_N}->{sim.N}" if initial_N is not None else f"{sim.N}"
+    )
+    send_ntfy(
+        config,
+        f"{sim_name} finished",
+        f"{sim_name} finished in {format_time(total_runtime)} "
+        f"({n_summary} particles). Archive: {output_file}",
+    )
+
     stop_capturing_stdout()
 
 
@@ -537,4 +642,13 @@ if __name__ == "__main__":
 
     config = read_config(config_path)
 
-    run_simulation(config, config_path=config_path)
+    try:
+        run_simulation(config, config_path=config_path)
+    except Exception as error:
+        send_ntfy(
+            config,
+            f"{config['simulation']['name']} FAILED",
+            f"{config['simulation']['name']} FAILED: "
+            f"{type(error).__name__}: {error}",
+        )
+        raise
