@@ -1,5 +1,20 @@
 # debris-disk-pipeline
 
+## Development setup
+
+After cloning, enable the repo's git hooks once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This installs `prepare-commit-msg`, which appends a `Claude-Session:` link to
+any commit made from inside a Claude Code session. List them later with:
+
+```bash
+git log --format='%h %s%n  %(trailers:key=Claude-Session,valueonly)'
+```
+
 ## Running a simulation
 
 ```bash

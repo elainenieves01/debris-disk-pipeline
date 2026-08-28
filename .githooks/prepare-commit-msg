@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#
+# Appends a "Claude-Session:" trailer to any commit created from inside a
+# Claude Code session, so every commit links back to the conversation that
+# produced it. No-op outside a Claude Code session, on merges, and when the
+# link is already present (e.g. Claude wrote it into the message itself).
+#
+# Enable in a fresh clone with:  git config core.hooksPath .githooks
+
+commit_msg_file="$1"
+commit_source="${2:-}"
+
+# CLAUDE_CODE_BRIDGE_SESSION_ID looks like "session_01ABC..."; the web URL is
+# https://claude.ai/code/<that value>.
+session_id="${CLAUDE_CODE_BRIDGE_SESSION_ID:-}"
+[ -n "$session_id" ] || exit 0
+
+# Leave merge commit messages alone.
+[ "$commit_source" = "merge" ] && exit 0
+
+link="https://claude.ai/code/${session_id}"
+
+# Already there (amend, rebase, or Claude added it itself)? Do nothing.
+if grep -qF "$link" "$commit_msg_file"; then
+    exit 0
+fi
+
+printf '\nClaude-Session: %s\n' "$link" >> "$commit_msg_file"
