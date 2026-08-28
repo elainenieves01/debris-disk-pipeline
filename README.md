@@ -25,6 +25,38 @@ Console output is also embedded in the run report at
 `outputs/<name>/<name>_report.md`, so the full log is recoverable after the run
 even if you didn't capture the terminal.
 
+## Run provenance
+
+Every run writes a self-contained record into `outputs/<name>/` so that months
+later you can tie any figure back to exactly what produced it:
+
+| File | Contents |
+|---|---|
+| `config.yaml` | Verbatim frozen copy of the YAML used (comments preserved). Edit the original `config/…` file freely afterwards — this copy is the truth for the run. |
+| `run_metadata.yaml` | Run UUID, timestamps, wall runtime, outcome, the exact command, git commit + branch + **dirty flag**, and key package versions. |
+| `environment.txt` | Full `pip freeze` of the environment the run used. |
+
+Every generated figure carries a one-line footer:
+
+```
+run <name> · uuid 8c5c4d2a · git a83f21c (DIRTY) · 2026-08-28
+```
+
+`(DIRTY)` means there were uncommitted changes to tracked files when the run
+started — the committed code at that hash is **not** exactly what ran. Recover
+the code state with `git checkout <commit>` (clean runs only).
+
+Turn the figure footer off for a specific run (e.g. paper figures) with:
+
+```yaml
+plots:
+  enabled: true
+  provenance_stamp: false   # default: true
+```
+
+`run_metadata.yaml`, `config.yaml`, and `environment.txt` are always written
+regardless of this toggle.
+
 ## Running long simulations
 
 A process started from an interactive shell (including anything launched inside a

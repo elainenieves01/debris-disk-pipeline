@@ -27,6 +27,19 @@ import numpy as np
 import pandas as pd
 import rebound
 
+from provenance import load_run_metadata, stamp_figure
+
+
+# Provenance metadata stamped onto every figure saved via save_figure().
+# Set once per run by generate_summary_figures(); None disables stamping.
+_DEFAULT_PROVENANCE = None
+
+
+def set_default_provenance(metadata):
+    """Set the provenance metadata that save_figure() stamps onto figures."""
+    global _DEFAULT_PROVENANCE
+    _DEFAULT_PROVENANCE = metadata
+
 
 # ============================================================
 # Building the snapshot table directly from the archive
@@ -104,8 +117,16 @@ def build_snapshot_table(archive_path):
 # Helper functions
 # ============================================================
 
-def save_figure(fig, output_dir, filename, dpi=200):
-    """Save a matplotlib figure as a PNG and close it."""
+def save_figure(fig, output_dir, filename, dpi=200, provenance=None):
+    """Save a matplotlib figure as a PNG and close it.
+
+    If provenance metadata is given (or a default was set via
+    set_default_provenance), a one-line provenance footer is stamped on first.
+    """
+    metadata = provenance if provenance is not None else _DEFAULT_PROVENANCE
+    if metadata:
+        stamp_figure(fig, metadata)
+
     output_dir = Path(output_dir) / "figures"
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -504,6 +525,9 @@ def generate_summary_figures(archive_path, config, run_output_dir):
 
     simulation_name = config["simulation"]["name"]
     dpi = int(config.get("plots", {}).get("dpi", 200))
+
+    stamp_on = bool(config.get("plots", {}).get("provenance_stamp", True))
+    set_default_provenance(load_run_metadata(run_output_dir) if stamp_on else None)
 
     print("Loaded snapshot table from archive.")
     print(df[df["snapshot"] == 0]["role"].value_counts())

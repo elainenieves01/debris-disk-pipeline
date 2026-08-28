@@ -13,6 +13,12 @@ from config_utils import read_config
 from summary_figures import generate_summary_figures
 from report import generate_report
 from tee_output import start_capturing_stdout, stop_capturing_stdout
+from provenance import (
+    run_output_dir_for,
+    capture_run_provenance,
+    update_run_metadata,
+    now_iso,
+)
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -455,10 +461,12 @@ def run_simulation(config, config_path=None):
 
 
     sim_name = config["simulation"]["name"]
-    base_output_dir = config["simulation"].get("output_dir", "outputs")
 
-    run_output_dir = os.path.join(base_output_dir, sim_name)
+    run_output_dir = run_output_dir_for(config)
     os.makedirs(run_output_dir, exist_ok=True)
+
+    # Provenance: freeze the config, record git/software/UUID, dump pip freeze.
+    capture_run_provenance(config, config_path, run_output_dir)
 
     output_file = os.path.join(run_output_dir, f"{sim_name}.bin")
 
@@ -602,6 +610,15 @@ def run_simulation(config, config_path=None):
     except Exception as error:
         print(f"Could not verify archive: {error}")
 
+    update_run_metadata(
+        run_output_dir,
+        finished=now_iso(),
+        wall_runtime_seconds=round(total_runtime, 1),
+        outcome="completed",
+        initial_particle_count=initial_N,
+        final_particle_count=sim.N,
+    )
+
     plots_enabled = bool(config.get("plots", {}).get("enabled", False))
 
     if plots_enabled:
@@ -645,6 +662,15 @@ if __name__ == "__main__":
     try:
         run_simulation(config, config_path=config_path)
     except Exception as error:
+        try:
+            update_run_metadata(
+                run_output_dir_for(config),
+                outcome="failed",
+                finished=now_iso(),
+                error=f"{type(error).__name__}: {error}",
+            )
+        except Exception:  # noqa: BLE001 - never mask the real error
+            pass
         send_ntfy(
             config,
             f"{config['simulation']['name']} FAILED",

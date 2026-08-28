@@ -1,5 +1,9 @@
+from pathlib import Path
+
 import numpy as np
 import rebound
+
+from provenance import load_run_metadata
 
 EARTH_MASS_TO_SOLAR_MASS = 3.0034896149156e-6
 
@@ -58,6 +62,55 @@ def _format_mass_assignment_config(config):
     return "unspecified"
 
 
+def _provenance_lines(metadata):
+    """Markdown lines for the Provenance section, or [] if no metadata."""
+    if not metadata:
+        return []
+
+    lines = ["## Provenance", ""]
+    lines.append(f"- Run UUID: `{metadata.get('run_uuid', 'unknown')}`")
+
+    created = metadata.get("created")
+    finished = metadata.get("finished")
+    if created:
+        lines.append(f"- Created: {created}")
+    if finished:
+        lines.append(f"- Finished: {finished}")
+    if metadata.get("wall_runtime_seconds") is not None:
+        lines.append(f"- Wall runtime: {metadata['wall_runtime_seconds']} s")
+    if metadata.get("outcome"):
+        lines.append(f"- Outcome: {metadata['outcome']}")
+    if metadata.get("error"):
+        lines.append(f"- Error: {metadata['error']}")
+    if metadata.get("command"):
+        lines.append(f"- Command: `{metadata['command']}`")
+
+    git = metadata.get("git") or {}
+    if git.get("available"):
+        flag = " **(DIRTY — uncommitted tracked changes)**" if git.get("dirty") else ""
+        lines.append(
+            f"- Git commit: `{git.get('commit', '?')}` "
+            f"(branch `{git.get('branch', '?')}`){flag}"
+        )
+        for name in git.get("dirty_files", []) or []:
+            lines.append(f"    - modified: `{name}`")
+    else:
+        lines.append("- Git: not available (run from a non-repo checkout)")
+
+    software = metadata.get("software") or {}
+    if software:
+        rendered = ", ".join(f"{k} {v}" for k, v in software.items())
+        lines.append(f"- Software: {rendered}")
+
+    if metadata.get("resumes"):
+        lines.append(f"- Resumed {len(metadata['resumes'])} time(s) after the first run")
+
+    lines.append("- Frozen config: `config.yaml` (this directory)")
+    lines.append("- Full environment: `environment.txt` (this directory)")
+    lines.append("")
+    return lines
+
+
 def generate_report(config, config_path, archive_path, output_path, terminal_output=None):
     """
     Write a Markdown report summarizing the YAML config used for a run,
@@ -84,12 +137,15 @@ def generate_report(config, config_path, archive_path, output_path, terminal_out
         initial_sim
     )
 
+    run_metadata = load_run_metadata(Path(output_path).parent)
+
     lines = []
     lines.append(f"# {sim_cfg['name']} — Simulation Report")
     lines.append("")
     lines.append(f"Config file: `{config_path}`")
     lines.append(f"Archive file: `{archive_path}`")
     lines.append("")
+    lines.extend(_provenance_lines(run_metadata))
 
     lines.append("## Simulation")
     lines.append(f"- Name: {sim_cfg['name']}")

@@ -23,6 +23,9 @@ config/generated/*
 *.h5
 *.csv
 
+# Per-run checkpoint artifact written to the repo root by dump: true runs
+dump_data.json
+
 # Keep input folder but avoid committing run tables by accident
 inputs/*
 !inputs/.gitkeep
