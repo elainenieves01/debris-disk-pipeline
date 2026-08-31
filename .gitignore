@@ -23,7 +23,8 @@ config/generated/*
 *.h5
 *.csv
 
-# Per-run checkpoint artifact written to the repo root by dump: true runs
+# Per-run checkpoint artifact (dump: true). Now written to outputs/<name>/,
+# which is already ignored; this also catches the legacy repo-root location.
 dump_data.json
 
 # Keep input folder but avoid committing run tables by accident

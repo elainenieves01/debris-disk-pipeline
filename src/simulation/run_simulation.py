@@ -33,6 +33,16 @@ SOLAR_MASS_G = 1.98892e33
 PLUTO_DIAMETER_KM = 2376.6  # Stern et al. 2015 (New Horizons)
 
 
+def dump_path_for(config):
+    """Path to a run's resume snapshot, inside its own output directory.
+
+    Keeping the dump per-run (rather than a single ``dump_data.json`` in the
+    working directory) lets several runs execute concurrently without
+    clobbering each other's resume state.
+    """
+    return Path(run_output_dir_for(config)) / "dump_data.json"
+
+
 def sphere_diameter_from_mass(mass_solar, density_g_per_cm3=1.0):
     """Diameter of a uniform sphere with the given mass and density.
 
@@ -206,7 +216,7 @@ def build_simulation(config):
     sim.integrator = config["integration"]["integrator"]
 
     sim.exit_max_distance = float(config["integration"]["exit_max_distance"])
-    file_path = Path("dump_data.json")
+    file_path = dump_path_for(config)
 
     dump_condition = config['simulation']["dump"]
 
@@ -413,11 +423,11 @@ def build_simulation(config):
     return sim
 
 
-def get_particles(snap_number, sim):
+def get_particles(snap_number, sim, dump_path):
     '''
     prints out the particles in a snapshot
-    takes in: i, simulation ; saves the particle in the dump file
-    i is the snapshot number 
+    takes in: i, simulation, dump_path ; saves the particle in the dump file
+    i is the snapshot number
     example sim = rebound.Simulation()
     '''
     particles = sim.particles
@@ -439,7 +449,7 @@ def get_particles(snap_number, sim):
         
         
     
-    with open("dump_data.json", "w") as file:
+    with open(dump_path, "w") as file:
         json.dump(dict_row, file, indent=4)
 
 
@@ -451,7 +461,7 @@ def run_simulation(config, config_path=None):
     time_step = (config["integration"]["time_step"])
 
     start_time = 0.0
-    file_path = Path("dump_data.json")
+    file_path = dump_path_for(config)
     dump_condition = config['simulation']["dump"]
     if dump_condition and os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as file:
@@ -464,6 +474,8 @@ def run_simulation(config, config_path=None):
 
     run_output_dir = run_output_dir_for(config)
     os.makedirs(run_output_dir, exist_ok=True)
+
+    dump_path = dump_path_for(config)
 
     # Provenance: freeze the config, record git/software/UUID, dump pip freeze.
     capture_run_provenance(config, config_path, run_output_dir)
@@ -479,7 +491,7 @@ def run_simulation(config, config_path=None):
         if os.path.exists(output_file):
             os.remove(output_file)
     else:
-        file_path = Path("dump_data.json")
+        file_path = dump_path
         if file_path.exists():
             with open(file_path, "r", encoding="utf-8") as file:
                 dump_data = json.load(file)
@@ -511,7 +523,7 @@ def run_simulation(config, config_path=None):
     for i, int_time in enumerate(times):
 
         if dump_condition:
-            get_particles(i,sim)
+            get_particles(i, sim, dump_path)
 
         try:
             sim.integrate(int_time)

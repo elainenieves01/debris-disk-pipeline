@@ -1,5 +1,5 @@
 simulation:
-  name: "SS_1000MP_100Myr"
+  name: "SS_800MP_100Myr_30xStir"
   random_seed: 0
   output_dir: "outputs"
   dump: true
@@ -30,9 +30,9 @@ disk:
   imax_deg: 3.2e-5
 
 massive_planetesimals:
-  N: 1000
+  N: 800
   # Set exactly one of the following:
-  total_disk_mass_earth: 5.8e-5          # total disk mass; each MP gets value / N
+  total_disk_mass_earth: 8.4          # 30x baseline (0.28); each MP gets value / N
   #individual_MP_mass_plutos: 2.659031e-05   # per-MP mass; disk mass = value * N
   #mass_fraction_of_giant_planet: 0.0005    # (legacy) needs a giant planet
 
@@ -41,7 +41,7 @@ test_particles:
   distribution: "uniform"
 
 notify:
-  enabled: false
+  enabled: true
   ntfy_topic: "https://ntfy.sh/elaine-hd216435-run"
 
 plots:
