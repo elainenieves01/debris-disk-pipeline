@@ -99,3 +99,22 @@ Under `massive_planetesimals`, set **exactly one** of:
 `total_mass_earth` still works as a deprecated alias of `total_disk_mass_earth`.
 Setting more than one key (or none) is an error. The console output names which
 mode was used.
+
+### Planetesimal mass distribution (standalone)
+
+`src/mass_models/` samples a population of planetesimals whose masses follow a
+truncated power law (a Dohnanyi collisional cascade, `dN/dm ∝ m^-11/6`, by
+default) and plots the individual bodies. This is an **analysis tool only** — it
+is not yet a `massive_planetesimals` mode, so it does not affect a simulation run.
+
+```bash
+python src/mass_models/make_distribution.py \
+    --n 800 --slope 1.8333 --mass-min 1e-6 --mass-max 1e-2 \
+    --total-disk-mass-earth 2.8 --seed 42 --outdir outputs/dohnanyi_demo
+```
+
+Writes `<outdir>/distribution.csv` (one row per particle) plus
+`<outdir>/figures/dohnanyi_per_particle.png` and
+`dohnanyi_differential_histogram.png`. `--total-disk-mass-earth` rescales the
+sampled masses so they sum to that total (pass `0` to disable); `--variable
+radius` samples a size spectrum instead (`--size-min` / `--size-max` in km).
