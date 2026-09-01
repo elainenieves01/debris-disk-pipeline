@@ -1,0 +1,58 @@
+simulation:
+  name: "SS_800MP_100Myr_dohnanyi_sizes"
+  random_seed: 0
+  output_dir: "outputs"
+  dump: true
+
+units:
+  time: "yr"
+  length: "AU"
+  mass: "Msun"
+
+integration:
+  integrator: "mercurius"
+  timestep_fraction_of_planet_period: 0.1
+  maxtime: 100000000
+  time_step: 10000
+  exit_max_distance: 1000.0
+
+star:
+  mass: 1.00
+
+giant_planet: null
+
+disk:
+  amin: 95
+  amax: 105
+  emin: 0.0
+  emax: 3.2e-5
+  imin_deg: 0.0
+  imax_deg: 3.2e-5
+
+massive_planetesimals:
+  N: 800
+  # mode: size_range -- the km limits below are literal planetesimal radii;
+  # each mass follows from radius + density and the disk mass is whatever the
+  # 800 bodies sum to (printed in the run output and report). No
+  # total_disk_mass_earth / other mass key here.
+  distribution:
+    type: power_law
+    mode: size_range
+    variable: radius
+    min: 1
+    max: 100
+    unit: km
+    slope: 3.5
+    seed: 42
+
+test_particles:
+  N: 0
+  distribution: "uniform"
+
+notify:
+  enabled: false
+  ntfy_topic: "https://ntfy.sh/elaine-hd216435-run"
+
+plots:
+  enabled: true
+  dpi: 200

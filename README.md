@@ -100,12 +100,62 @@ Under `massive_planetesimals`, set **exactly one** of:
 Setting more than one key (or none) is an error. The console output names which
 mode was used.
 
-### Planetesimal mass distribution (standalone)
+### Power-law mass spectrum
 
-`src/mass_models/` samples a population of planetesimals whose masses follow a
-truncated power law (a Dohnanyi collisional cascade, `dN/dm ∝ m^-11/6`, by
-default) and plots the individual bodies. This is an **analysis tool only** — it
-is not yet a `massive_planetesimals` mode, so it does not affect a simulation run.
+By default the chosen mass key gives every planetesimal the identical mass. Add
+an optional `distribution` block to draw the `N` masses from a truncated power
+law (a Dohnanyi collisional cascade) instead. It has two named `mode`s:
+
+| `mode` | Anchor | Needs a sibling mass key? | Disk mass |
+|---|---|---|---|
+| `total_mass` (default) | `total_disk_mass_earth` | yes — `total_disk_mass_earth` | fixed (sample rescaled to sum to it) |
+| `size_range` | the literal `[min, max]` | no (must have none) | computed from the `N` bodies |
+
+```yaml
+# mode: total_mass  —  power-law split of a fixed disk mass
+massive_planetesimals:
+  N: 800
+  total_disk_mass_earth: 0.28
+  distribution:
+    type: power_law
+    mode: total_mass
+    variable: radius        # radius | mass
+    min: 1
+    max: 100
+    unit: km                # km for radius, earth_mass for mass
+    slope: 3.5              # dN/dvariable ∝ variable^-slope  (Dohnanyi: 3.5 in size, 11/6 in mass)
+    seed: 42               # optional
+
+# mode: size_range  —  literal size limits, disk mass falls out
+massive_planetesimals:
+  N: 800
+  distribution:
+    type: power_law
+    mode: size_range
+    variable: radius
+    min: 1
+    max: 100
+    unit: km
+    slope: 3.5
+    seed: 42
+```
+
+In `total_mass`, `slope` and the `[min, max]` *ratio* set the spectrum shape
+while the absolute scale stays `total_disk_mass_earth / N`, so realized body
+radii differ from `min`/`max`. In `size_range`, `min`/`max` are the actual radius
+(or mass) limits and the total disk mass is whatever the bodies sum to (printed
+in the run output and report).
+
+Either way the run writes the sampled input spectrum to
+`outputs/<name>/distribution.csv` and
+`outputs/<name>/figures/dohnanyi_{per_particle,differential_histogram}.png`.
+See `config/SS_800MP_100Myr_dohnanyi.yaml` and
+`config/SS_800MP_100Myr_dohnanyi_sizes.yaml`.
+
+### Standalone distribution tool
+
+`src/mass_models/make_distribution.py` runs the same sampler outside a
+simulation, for exploring a spectrum and its plots:
 
 ```bash
 python src/mass_models/make_distribution.py \
@@ -113,8 +163,6 @@ python src/mass_models/make_distribution.py \
     --total-disk-mass-earth 2.8 --seed 42 --outdir outputs/dohnanyi_demo
 ```
 
-Writes `<outdir>/distribution.csv` (one row per particle) plus
-`<outdir>/figures/dohnanyi_per_particle.png` and
-`dohnanyi_differential_histogram.png`. `--total-disk-mass-earth` rescales the
-sampled masses so they sum to that total (pass `0` to disable); `--variable
-radius` samples a size spectrum instead (`--size-min` / `--size-max` in km).
+Writes `<outdir>/distribution.csv` plus the same two figures.
+`--total-disk-mass-earth 0` disables the rescale; `--variable radius` samples a
+size spectrum (`--size-min` / `--size-max` in km).

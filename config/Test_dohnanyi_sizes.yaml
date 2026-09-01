@@ -1,0 +1,51 @@
+simulation:
+  name: "Test_dohnanyi_sizes"
+  random_seed: 0
+  output_dir: "outputs"
+  dump: false
+
+units:
+  time: "yr"
+  length: "AU"
+  mass: "Msun"
+
+integration:
+  integrator: "mercurius"
+  timestep_fraction_of_planet_period: 0.1
+  maxtime: 200.0
+  time_step: 100
+  exit_max_distance: 1000.0
+
+star:
+  mass: 1.00
+
+giant_planet: null
+
+disk:
+  amin: 95
+  amax: 105
+  emin: 0.0
+  emax: 3.2e-5
+  imin_deg: 0.0
+  imax_deg: 3.2e-5
+
+massive_planetesimals:
+  N: 40
+  # mode: size_range -- km limits are literal radii; disk mass is computed.
+  distribution:
+    type: power_law
+    mode: size_range
+    variable: radius
+    min: 1
+    max: 100
+    unit: km
+    slope: 3.5
+    seed: 42
+
+test_particles:
+  N: 0
+  distribution: "uniform"
+
+plots:
+  enabled: true
+  dpi: 200
