@@ -1,5 +1,5 @@
 simulation:
-  name: "SS_800MP_100Myr_dohnanyi_sizes"
+  name: "Sim_100MP_100thouyr_dohnanyi_sizes"
   random_seed: 0
   output_dir: "outputs"
   dump: true
@@ -12,8 +12,8 @@ units:
 integration:
   integrator: "mercurius"
   timestep_fraction_of_planet_period: 0.1
-  maxtime: 100000000
-  time_step: 10000
+  maxtime: 100000
+  time_step: 100
   exit_max_distance: 1000.0
 
 star:
@@ -30,7 +30,7 @@ disk:
   imax_deg: 3.2e-5
 
 massive_planetesimals:
-  N: 800
+  N: 100
   # mode: size_range -- the km limits below are literal planetesimal radii;
   # each mass follows from radius + density and the disk mass is whatever the
   # 800 bodies sum to (printed in the run output and report). No

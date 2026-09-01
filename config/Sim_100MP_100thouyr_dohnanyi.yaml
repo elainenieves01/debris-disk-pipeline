@@ -1,5 +1,5 @@
 simulation:
-  name: "SS_800MP_100Myr_dohnanyi"
+  name: "Sim_100MP_100thouyr_dohnanyi"
   random_seed: 0
   output_dir: "outputs"
   dump: true
@@ -12,8 +12,8 @@ units:
 integration:
   integrator: "mercurius"
   timestep_fraction_of_planet_period: 0.1
-  maxtime: 100000000
-  time_step: 10000
+  maxtime: 100000
+  time_step: 100
   exit_max_distance: 1000.0
 
 star:
@@ -30,7 +30,7 @@ disk:
   imax_deg: 3.2e-5
 
 massive_planetesimals:
-  N: 800
+  N: 100
   # Total disk mass (as in the equal-mass sweeps); the distribution block
   # below splits it among the N planetesimals along a power law instead of
   # evenly. Remove the block to fall back to an even split.
@@ -38,11 +38,11 @@ massive_planetesimals:
   distribution:
     type: power_law
     mode: total_mass       # rescale the sampled masses to sum to total_disk_mass_earth
-    variable: radius
-    min: 1
-    max: 100
-    unit: km
-    slope: 3.5
+    variable: mass
+    min: 1.0e-6
+    max: 1.0e-2
+    unit: earth_mass
+    slope: 1.8333          # Dohnanyi mass slope (11/6); dN/dm ~ m^-slope
     seed: 42
 
 test_particles:

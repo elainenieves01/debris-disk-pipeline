@@ -149,8 +149,8 @@ in the run output and report).
 Either way the run writes the sampled input spectrum to
 `outputs/<name>/distribution.csv` and
 `outputs/<name>/figures/dohnanyi_{per_particle,differential_histogram}.png`.
-See `config/SS_800MP_100Myr_dohnanyi.yaml` and
-`config/SS_800MP_100Myr_dohnanyi_sizes.yaml`.
+See `config/Sim_100MP_100thouyr_dohnanyi.yaml` and
+`config/Sim_100MP_100thouyr_dohnanyi_sizes.yaml`.
 
 ### Standalone distribution tool
 
