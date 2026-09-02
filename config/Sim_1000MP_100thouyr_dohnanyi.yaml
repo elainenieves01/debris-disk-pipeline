@@ -50,7 +50,7 @@ test_particles:
   distribution: "uniform"
 
 notify:
-  enabled: false
+  enabled: true
   ntfy_topic: "https://ntfy.sh/elaine-hd216435-run"
 
 plots:
