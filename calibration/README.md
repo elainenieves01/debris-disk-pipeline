@@ -23,6 +23,10 @@ with `C_e = 40`, `Omega = sqrt(G Mstar / a^3)` at the belt centre
 
 Only the control and the 10x / 30x / 50x runs exist so far (no 20x / 40x).
 
+Each N-body curve is also fitted as a power law `e = A t^p` (degree-1 log-log
+polyfit); the fitted slope `p` is shown in the N-body legend labels and the full
+breakdown is written to `rmse_kirvov_calibration_fits.md`.
+
 Run:
 
 ```
@@ -33,5 +37,7 @@ Outputs:
 
 - `calibration/rmse_kirvov_calibration.png` — control + 10x / 30x / 50x
 - `calibration/rmse_kirvov_calibration_stir_only.png` — 10x / 30x / 50x only
+- `calibration/rmse_kirvov_calibration_fits.md` — log-log power-law fits of the
+  three N-body curves (slope vs analytic 1/4, amplitude offset)
 
 Edit the `FIGURES` dict in the script to change which runs land on which figure.
