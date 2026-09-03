@@ -177,4 +177,5 @@ spectrum tilts from mass-dominated (`q < 1`) to number-dominated (`q > 1`):
 python src/mass_models/plot_slope_sweep.py
 ```
 
-Writes `src/mass_models/mass_distribution_slope_sweep{,_grid}.png`.
+Writes `src/mass_models/mass_distribution_slope_sweep{,_grid}.png` plus one
+standalone figure per slope (`mass_distribution_slope_q<q>.png`).

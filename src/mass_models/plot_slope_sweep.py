@@ -19,6 +19,7 @@ src/mass_models/plots.py (Agg backend, PNG with bbox_inches="tight", a
 Writes, directly into src/mass_models/:
   * mass_distribution_slope_sweep.png       -- all slopes overlaid
   * mass_distribution_slope_sweep_grid.png  -- one panel per slope
+  * mass_distribution_slope_q<q>.png        -- one standalone figure per slope
 """
 
 import os
@@ -145,6 +146,44 @@ def plot_overlay(counts_by_slope):
     return _save(fig, "mass_distribution_slope_sweep.png")
 
 
+def plot_per_slope(counts_by_slope):
+    """One standalone figure per slope: expected line + one sampled draw."""
+    paths = []
+    for slope, counts in counts_by_slope:
+        color = _CMAP(_NORM(slope))
+
+        fig, ax = plt.subplots(figsize=(8, 5.5))
+
+        ax.plot(
+            BIN_CENTRES, expected_counts(slope),
+            color=color, lw=2.0, label="expected",
+        )
+        drawn = counts.astype(float)
+        drawn[drawn == 0] = np.nan
+        ax.plot(
+            BIN_CENTRES, drawn,
+            color=color, lw=0, marker="o", ms=5, alpha=0.6,
+            label=f"one draw of {N_PARTICLES}",
+        )
+
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_ylim(1e-2, 5e2)
+        ax.set_xlim(MASS_MIN_EARTH, MASS_MAX_EARTH)
+        ax.set_xlabel("Mass (Earth masses)")
+        ax.set_ylabel(f"Number of planetesimals per bin  (N = {N_PARTICLES})")
+        ax.set_title(
+            r"Planetesimal mass distribution, $dN/dm \propto m^{-q}$"
+            f"\nslope q = {slope:g}"
+        )
+        ax.grid(alpha=0.3, which="both")
+        ax.legend()
+
+        fig.tight_layout()
+        paths.append(_save(fig, f"mass_distribution_slope_q{slope:g}.png"))
+    return paths
+
+
 def plot_grid(counts_by_slope):
     n = len(counts_by_slope)
     ncols = 4
@@ -188,6 +227,7 @@ def main():
     ]
     plot_overlay(counts_by_slope)
     plot_grid(counts_by_slope)
+    plot_per_slope(counts_by_slope)
 
 
 if __name__ == "__main__":
