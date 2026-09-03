@@ -23,7 +23,9 @@ def _massive_planetesimal_mass_summary(sim):
     if masses.size == 0:
         return 0, None, True, masses
 
-    uniform = bool(np.allclose(masses, masses[0]))
+    # Purely relative check: MP masses are ~1e-6..1e-12 Msun, so the default
+    # atol=1e-8 would call any spectrum "uniform".
+    uniform = bool(np.allclose(masses, masses[0], rtol=1e-6, atol=0.0))
     mass_msun = float(masses[0]) if uniform else None
 
     return masses.size, mass_msun, uniform, masses
@@ -31,6 +33,23 @@ def _massive_planetesimal_mass_summary(sim):
 
 def _format_mass_assignment_config(config):
     mp_config = config["massive_planetesimals"]
+
+    dist = mp_config.get("distribution")
+    if dist is not None:
+        dist_mode = str(dist.get("mode", "total_mass")).lower()
+        common = (
+            f"power_law distribution (mode={dist_mode}): "
+            f"variable={dist.get('variable')}, "
+            f"[{dist.get('min')}, {dist.get('max')}] {dist.get('unit')}, "
+            f"slope={dist.get('slope')}, seed={dist.get('seed')}"
+        )
+        if dist_mode == "size_range":
+            return common + " (sizes literal; disk mass computed from N bodies)"
+        total = mp_config.get("total_disk_mass_earth")
+        total_str = "unset" if total is None else f"{float(total):.6e} Earth masses"
+        return common + (
+            f" (total_disk_mass_earth = {total_str}, split across N by the power law)"
+        )
 
     if mp_config.get("total_disk_mass_earth") is not None:
         return (
@@ -209,9 +228,23 @@ def generate_report(config, config_path, archive_path, output_path, terminal_out
             f"{mp_mass_msun:.6e} Msun ({mp_mass_earth:.6f} Earth masses)"
         )
     else:
+        to_earth = 1.0 / EARTH_MASS_TO_SOLAR_MASS
         lines.append(
-            f"- **Mass is NOT uniform** across the {n_mp} massive planetesimals: "
-            f"min = {mp_masses.min():.6e} Msun, max = {mp_masses.max():.6e} Msun"
+            f"- **Mass is NOT uniform** across the {n_mp} massive planetesimals:"
+        )
+        lines.append(
+            f"  - min / median / max: "
+            f"{mp_masses.min():.6e} / {np.median(mp_masses):.6e} / "
+            f"{mp_masses.max():.6e} Msun"
+        )
+        lines.append(
+            f"  - min / median / max: "
+            f"{mp_masses.min() * to_earth:.6e} / "
+            f"{np.median(mp_masses) * to_earth:.6e} / "
+            f"{mp_masses.max() * to_earth:.6e} Earth masses"
+        )
+        lines.append(
+            f"  - total disk mass: {mp_masses.sum() * to_earth:.6e} Earth masses"
         )
     lines.append("")
 

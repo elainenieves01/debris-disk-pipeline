@@ -6,12 +6,14 @@ import sys
 import urllib.request
 
 _SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-for _subdir in ("config_io", "plotting", "diagnostics", "utilities"):
+for _subdir in ("config_io", "plotting", "diagnostics", "utilities", "mass_models"):
     sys.path.insert(0, os.path.join(_SRC_DIR, "..", _subdir))
 
 from config_utils import read_config
 from summary_figures import generate_summary_figures
 from report import generate_report
+from mass_models import generate_distribution
+from plots import plot_per_particle, plot_differential_histogram
 from tee_output import start_capturing_stdout, stop_capturing_stdout
 from provenance import (
     run_output_dir_for,
@@ -157,6 +159,86 @@ def choose_timestep(sim, config, has_giant_planet, Mstar, a_ref):
     return dt
 
 
+# The "distribution" block draws per-planetesimal masses from a power law.
+# Two named modes:
+#   "total_mass"  - total_disk_mass_earth is the anchor; the sampled masses are
+#                   rescaled to sum to it. slope + [min, max] ratio set only the
+#                   shape. (Sibling key total_disk_mass_earth is required.)
+#   "size_range"  - [min, max] are literal physical limits; each mass follows
+#                   from radius + density and the disk mass is whatever the N
+#                   bodies sum to. (No sibling mass key.)
+DISTRIBUTION_MODES = ("total_mass", "size_range")
+
+
+def _sample_mp_distribution(dist_cfg, npl, config, total_disk_mass_earth=None):
+    """Sample per-planetesimal masses from a power-law "distribution" block.
+
+    Returns the DataFrame from ``generate_distribution`` (columns include
+    ``mass_solar``). When ``total_disk_mass_earth`` is given the sampled masses
+    are rescaled to sum to it; otherwise ``[min, max]`` are used literally.
+    """
+    dtype = dist_cfg.get("type", "power_law")
+    if dtype != "power_law":
+        raise ValueError(
+            f"massive_planetesimals.distribution.type='{dtype}' is not supported "
+            "(only 'power_law')."
+        )
+
+    variable = str(dist_cfg["variable"]).lower()
+    unit = str(dist_cfg["unit"]).lower()
+    expected_unit = {"radius": "km", "mass": "earth_mass"}
+    if variable not in expected_unit:
+        raise ValueError(
+            "massive_planetesimals.distribution.variable must be 'radius' or 'mass' "
+            f"(got '{variable}')."
+        )
+    if unit != expected_unit[variable]:
+        raise ValueError(
+            "massive_planetesimals.distribution.unit must be "
+            f"'{expected_unit[variable]}' when variable='{variable}' (got '{unit}')."
+        )
+
+    seed = dist_cfg.get("seed")
+    if seed is None:
+        seed = config["simulation"].get("random_seed", 42)
+
+    return generate_distribution(
+        n_particles=npl,
+        distribution_variable=variable,
+        value_min=float(dist_cfg["min"]),
+        value_max=float(dist_cfg["max"]),
+        slope=float(dist_cfg["slope"]),
+        density_g_cm3=1.0,
+        mass_unit="earth",
+        total_disk_mass_earth=(
+            None if total_disk_mass_earth is None else float(total_disk_mass_earth)
+        ),
+        seed=int(seed),
+    )
+
+
+def _write_distribution_diagnostics(dist_df, dist_cfg, config):
+    """Record the sampled input spectrum next to the run (never raises)."""
+    try:
+        out_dir = Path(run_output_dir_for(config))
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        csv_path = out_dir / "distribution.csv"
+        dist_df.to_csv(csv_path, index=False)
+        print(f"Saved: {csv_path}")
+
+        label = (
+            f"{config['simulation']['name']} - power-law {dist_cfg['variable']} "
+            f"spectrum (slope {float(dist_cfg['slope']):g}, N = {len(dist_df)})"
+        )
+        plot_per_particle(dist_df, out_dir, label=label)
+        plot_differential_histogram(
+            dist_df, out_dir, slope=float(dist_cfg["slope"]), label=label
+        )
+    except Exception as error:
+        print(f"WARNING: could not write distribution diagnostics: {error}")
+
+
 def build_simulation(config):
 
     random_seed = 42
@@ -297,6 +379,26 @@ def build_simulation(config):
     # "total_mass_earth" is accepted as a deprecated alias for
     # "total_disk_mass_earth".
     # "massive_planetesimals" used to be referred to as dwarf_planets.
+    #
+    # An optional "distribution" block draws the N masses from a power law.
+    # It has two named modes (distribution.mode):
+    #
+    #   mode: total_mass   (default)  - needs the sibling total_disk_mass_earth;
+    #       the sampled masses are rescaled to sum to it. slope and the
+    #       [min, max] ratio set only the shape.
+    #
+    #   mode: size_range              - no sibling mass key; [min, max] are used
+    #       literally and the disk mass is whatever the N bodies sum to.
+    #
+    #   distribution:
+    #     type: power_law
+    #     mode: size_range        # total_mass | size_range
+    #     variable: radius        # radius | mass
+    #     min: 1
+    #     max: 100
+    #     unit: km                # km for radius, earth_mass for mass
+    #     slope: 3.5              # dN/dvariable ~ variable^-slope
+    #     seed: 42                # optional
 
     if npl > 0:
         mp_cfg = config["massive_planetesimals"]
@@ -323,62 +425,154 @@ def build_simulation(config):
         )
         present = [k for k in MASS_KEYS if mp_cfg.get(k) is not None]
 
-        if len(present) != 1:
-            raise ValueError(
-                "massive_planetesimals must set exactly one of "
-                f"{MASS_KEYS} (found: {present or 'none'})."
-            )
-
-        mode = present[0]
-
-        if mode == "total_disk_mass_earth":
-            total_disk_mass_earth = float(mp_cfg["total_disk_mass_earth"])
-            m_mps = total_disk_mass_earth * EARTH_MASS_TO_SOLAR_MASS / npl
-            mode_note = "total disk mass given; divided evenly among N"
-
-        elif mode == "individual_MP_mass_plutos":
-            individual_MP_mass_plutos = float(mp_cfg["individual_MP_mass_plutos"])
-            m_mps = individual_MP_mass_plutos * PLUTO_MASS_TO_SOLAR_MASS
-            mode_note = "per-planetesimal mass given; disk mass = m * N"
-
-        else:  # mass_fraction_of_giant_planet
-            if not has_giant_planet:
+        dist_cfg = mp_cfg.get("distribution")
+        dist_mode = None
+        if dist_cfg is not None:
+            dist_mode = str(dist_cfg.get("mode", "total_mass")).lower()
+            if dist_mode not in DISTRIBUTION_MODES:
                 raise ValueError(
-                    "massive_planetesimals uses 'mass_fraction_of_giant_planet' "
-                    "but there is no giant planet. Use 'total_disk_mass_earth' "
-                    "or 'individual_MP_mass_plutos' instead."
+                    "massive_planetesimals.distribution.mode must be one of "
+                    f"{DISTRIBUTION_MODES} (got '{dist_mode}')."
                 )
-            mass_fraction = float(mp_cfg["mass_fraction_of_giant_planet"])
-            m_mps = M_planet * mass_fraction
-            mode_note = "fraction of giant-planet mass, per planetesimal"
 
-        m_mps_pluto = m_mps / PLUTO_MASS_TO_SOLAR_MASS
-        m_mps_earth = m_mps / EARTH_MASS_TO_SOLAR_MASS
-        total_disk_earth = m_mps_earth * npl
-        mp_diameter_km = sphere_diameter_from_mass(m_mps, density_g_per_cm3=1.0)
+        dist_df = None
+
+        if dist_mode == "size_range":
+            # Standalone mode: the [min, max] size range and N set everything;
+            # the disk mass is an output, so no MASS_KEYS should be set.
+            if present:
+                raise ValueError(
+                    "massive_planetesimals.distribution.mode='size_range' computes "
+                    f"the disk mass from the sampled sizes; remove {present}."
+                )
+            mode = "distribution/size_range"
+            mode_note = "power-law size range given; disk mass computed from N bodies"
+            dist_df = _sample_mp_distribution(dist_cfg, npl, config)
+            mp_masses = dist_df["mass_solar"].to_numpy()
+            m_mps = float(np.median(mp_masses))
+
+        else:
+            if len(present) != 1:
+                raise ValueError(
+                    "massive_planetesimals must set exactly one of "
+                    f"{MASS_KEYS} (found: {present or 'none'})."
+                )
+
+            mode = present[0]
+
+            if dist_cfg is not None and mode != "total_disk_mass_earth":
+                raise ValueError(
+                    "massive_planetesimals.distribution.mode='total_mass' splits "
+                    "'total_disk_mass_earth' by a power law and requires it; it "
+                    f"cannot be combined with '{mode}'."
+                )
+
+            if mode == "total_disk_mass_earth":
+                total_disk_mass_earth = float(mp_cfg["total_disk_mass_earth"])
+                m_mps = total_disk_mass_earth * EARTH_MASS_TO_SOLAR_MASS / npl
+                mode_note = "total disk mass given; divided evenly among N"
+                if dist_cfg is not None:
+                    mode_note = "total disk mass given; split among N by a power law"
+
+            elif mode == "individual_MP_mass_plutos":
+                individual_MP_mass_plutos = float(mp_cfg["individual_MP_mass_plutos"])
+                m_mps = individual_MP_mass_plutos * PLUTO_MASS_TO_SOLAR_MASS
+                mode_note = "per-planetesimal mass given; disk mass = m * N"
+
+            else:  # mass_fraction_of_giant_planet
+                if not has_giant_planet:
+                    raise ValueError(
+                        "massive_planetesimals uses 'mass_fraction_of_giant_planet' "
+                        "but there is no giant planet. Use 'total_disk_mass_earth' "
+                        "or 'individual_MP_mass_plutos' instead."
+                    )
+                mass_fraction = float(mp_cfg["mass_fraction_of_giant_planet"])
+                m_mps = M_planet * mass_fraction
+                mode_note = "fraction of giant-planet mass, per planetesimal"
+
+            # Per-particle masses (solar masses): uniform unless the "total_mass"
+            # distribution turns total_disk_mass_earth into a spectrum.
+            if dist_cfg is not None:
+                dist_df = _sample_mp_distribution(
+                    dist_cfg, npl, config,
+                    total_disk_mass_earth=total_disk_mass_earth,
+                )
+                mp_masses = dist_df["mass_solar"].to_numpy()
+            else:
+                mp_masses = np.full(npl, m_mps, dtype=float)
 
         print("\nMassive planetesimal mass setup:")
         print(f"  Mode: {mode}  ({mode_note})")
         print(f"  Number of planetesimals: {npl}")
-        print(
-            f"  Individual MP mass: {m_mps_pluto:.6e} Pluto masses / "
-            f"{m_mps_earth:.6e} Earth masses / {m_mps:.6e} Msun"
-        )
-        print(
-            f"  Individual MP diameter: {mp_diameter_km:.3f} km "
-            f"({mp_diameter_km / PLUTO_DIAMETER_KM:.6e} Pluto diameters) "
-            f"(uniform sphere, rho = 1 g/cm**3)"
-        )
-        print(
-            f"  Total disk mass: {total_disk_earth:.6e} Earth masses "
-            f"({m_mps * npl:.6e} Msun)"
-        )
+
+        if dist_df is not None:
+            masses_earth = dist_df["mass_earth"].to_numpy()
+            radius_km = dist_df["radius_km"].to_numpy()
+            diam_km = 2.0 * radius_km
+            dyn_range = float(dist_cfg["max"]) / float(dist_cfg["min"])
+            if dist_mode == "size_range":
+                print(
+                    f"  Mass spectrum: power_law in {dist_cfg['variable']}, "
+                    f"slope={float(dist_cfg['slope']):g}, "
+                    f"[{dist_cfg['min']}, {dist_cfg['max']}] {dist_cfg['unit']} "
+                    f"(literal limits), seed={dist_df.attrs.get('seed')}"
+                )
+            else:
+                print(
+                    f"  Mass spectrum: power_law in {dist_cfg['variable']}, "
+                    f"slope={float(dist_cfg['slope']):g}, "
+                    f"{dyn_range:g}x dynamic range "
+                    f"([{dist_cfg['min']}, {dist_cfg['max']}] {dist_cfg['unit']} "
+                    f"sets the shape), seed={dist_df.attrs.get('seed')}"
+                )
+                print(
+                    "  NOTE: absolute scale is fixed by total_disk_mass_earth / N, "
+                    "not by the min/max above."
+                )
+            print(
+                "  Per-MP mass (Earth masses): "
+                f"min={masses_earth.min():.6e} / "
+                f"median={np.median(masses_earth):.6e} / "
+                f"max={masses_earth.max():.6e}"
+            )
+            print(
+                "  Per-MP diameter (km, uniform sphere, rho = 1 g/cm**3): "
+                f"min={diam_km.min():.3f} / median={np.median(diam_km):.3f} / "
+                f"max={diam_km.max():.3f}"
+            )
+            total_label = (
+                "Total disk mass (computed)"
+                if dist_mode == "size_range"
+                else "Total disk mass"
+            )
+            print(
+                f"  {total_label}: {masses_earth.sum():.6e} Earth masses "
+                f"({mp_masses.sum():.6e} Msun)"
+            )
+        else:
+            m_mps_pluto = m_mps / PLUTO_MASS_TO_SOLAR_MASS
+            m_mps_earth = m_mps / EARTH_MASS_TO_SOLAR_MASS
+            total_disk_earth = m_mps_earth * npl
+            mp_diameter_km = sphere_diameter_from_mass(m_mps, density_g_per_cm3=1.0)
+            print(
+                f"  Individual MP mass: {m_mps_pluto:.6e} Pluto masses / "
+                f"{m_mps_earth:.6e} Earth masses / {m_mps:.6e} Msun"
+            )
+            print(
+                f"  Individual MP diameter: {mp_diameter_km:.3f} km "
+                f"({mp_diameter_km / PLUTO_DIAMETER_KM:.6e} Pluto diameters) "
+                f"(uniform sphere, rho = 1 g/cm**3)"
+            )
+            print(
+                f"  Total disk mass: {total_disk_earth:.6e} Earth masses "
+                f"({m_mps * npl:.6e} Msun)"
+            )
 
         for i in range(npl):
 
             sim.add(
                 primary=sim.particles[0],
-                m=m_mps,
+                m=float(mp_masses[i]),
                 a=rng.uniform(amin, amax),
                 e=rng.uniform(emin, emax),
                 inc=rng.uniform(imin, imax),
@@ -387,6 +581,9 @@ def build_simulation(config):
                 M = rng.uniform(0,2*np.pi),
                 name= f"MP_{i}"
             )
+
+        if dist_df is not None:
+            _write_distribution_diagnostics(dist_df, dist_cfg, config)
 
 
     else:
