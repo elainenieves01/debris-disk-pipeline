@@ -166,3 +166,15 @@ python src/mass_models/make_distribution.py \
 Writes `<outdir>/distribution.csv` plus the same two figures.
 `--total-disk-mass-earth 0` disables the rescale; `--variable radius` samples a
 size spectrum (`--size-min` / `--size-max` in km).
+
+### Slope sweep
+
+`src/mass_models/plot_slope_sweep.py` draws 1000 planetesimals for each slope
+`q` in `{0, 0.5, 1.0, ..., 5.0}` and plots number-per-mass-bin, showing how the
+spectrum tilts from mass-dominated (`q < 1`) to number-dominated (`q > 1`):
+
+```bash
+python src/mass_models/plot_slope_sweep.py
+```
+
+Writes `src/mass_models/mass_distribution_slope_sweep{,_grid}.png`.
