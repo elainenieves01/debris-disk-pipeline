@@ -1,25 +1,26 @@
 """
 plot_slope_sweep.py
 
-Sweep the power-law slope of the planetesimal mass spectrum and show how it
+Sweep the power-law slope of the planetesimal *size* spectrum and show how it
 reshapes a population of 1000 massive planetesimals.
 
-For each slope q in {0, 0.5, 1.0, ..., 5.0} we draw 1000 masses from
+For each slope q in {2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0} we draw 1000 radii from
 
-    dN/dm  ~  m^-q,      1e-6 <= m/M_earth <= 1e-2
+    dN/dR  ~  R^-q,      1 km <= R <= 100 km
 
-(no rescaling to a target disk mass, so every slope shares the same mass
-support and the histograms are directly comparable), bin them in shared
-log-spaced mass bins, and plot number-per-bin vs mass.
+and plot the cumulative size distribution: every one of the 1000 planetesimals
+is a single point at (its radius, its rank), i.e. the number of bodies at least
+that large, N(>=R). The smooth analytic N(>=R) for the truncated power law is
+overlaid.
 
 Uses the standalone sampler in mass_models.py. Styled after
 src/mass_models/plots.py (Agg backend, PNG with bbox_inches="tight", a
 "Saved: <path>" line, a small grey footer).
 
 Writes, directly into src/mass_models/:
-  * mass_distribution_slope_sweep.png       -- all slopes overlaid
-  * mass_distribution_slope_sweep_grid.png  -- one panel per slope
-  * mass_distribution_slope_q<q>.png        -- one standalone figure per slope
+  * radius_distribution_slope_sweep.png       -- all slopes overlaid
+  * radius_distribution_slope_sweep_grid.png  -- one panel per slope
+  * radius_distribution_slope_q<q>.png        -- one standalone figure per slope
 """
 
 import os
@@ -42,17 +43,13 @@ from mass_models import generate_distribution  # noqa: E402
 
 # --- sweep configuration ---------------------------------------------------
 N_PARTICLES = 1000
-SLOPES = np.arange(0.0, 5.0 + 1e-9, 0.5)  # 0, 0.5, 1.0, ..., 5.0
-MASS_MIN_EARTH = 1.0e-6
-MASS_MAX_EARTH = 1.0e-2
+SLOPES = np.arange(2.0, 5.0 + 1e-9, 0.5)  # 2.0, 2.5, 3.0, ..., 5.0
+RADIUS_MIN_KM = 1.0
+RADIUS_MAX_KM = 100.0
 DENSITY_G_CM3 = 1.0
 BASE_SEED = 42
-N_BINS = 24
 
-MASS_BINS = np.logspace(
-    np.log10(MASS_MIN_EARTH), np.log10(MASS_MAX_EARTH), N_BINS + 1
-)
-BIN_CENTRES = np.sqrt(MASS_BINS[:-1] * MASS_BINS[1:])
+RANKS = np.arange(1, N_PARTICLES + 1)  # y-axis: cumulative count N(>=R)
 
 _CMAP = plt.get_cmap("viridis")
 _NORM = Normalize(vmin=SLOPES.min(), vmax=SLOPES.max())
@@ -60,9 +57,9 @@ _NORM = Normalize(vmin=SLOPES.min(), vmax=SLOPES.max())
 
 def _footer():
     return (
-        f"N={N_PARTICLES} per slope · dN/dm ~ m^-q · "
-        f"m in [{MASS_MIN_EARTH:g}, {MASS_MAX_EARTH:g}] M_earth · "
-        f"rho={DENSITY_G_CM3:g} g/cm^3 · seed={BASE_SEED} (+ slope index)"
+        f"N={N_PARTICLES} per slope · dN/dR ~ R^-q · "
+        f"R in [{RADIUS_MIN_KM:g}, {RADIUS_MAX_KM:g}] km · "
+        f"seed={BASE_SEED} (+ slope index)"
     )
 
 
@@ -78,63 +75,67 @@ def _save(fig, filename, dpi=200):
     return save_path
 
 
-def sample_counts(slope, seed):
-    """Number of the 1000 planetesimals falling in each shared mass bin."""
+def sample_radii_descending(slope, seed):
+    """The 1000 sampled radii (km), sorted largest -> smallest."""
     df = generate_distribution(
         n_particles=N_PARTICLES,
-        distribution_variable="mass",
-        value_min=MASS_MIN_EARTH,
-        value_max=MASS_MAX_EARTH,
+        distribution_variable="radius",
+        value_min=RADIUS_MIN_KM,
+        value_max=RADIUS_MAX_KM,
         slope=float(slope),
         density_g_cm3=DENSITY_G_CM3,
-        mass_unit="earth",
-        total_disk_mass_earth=None,  # keep the raw power-law support
         seed=seed,
     )
-    counts, _ = np.histogram(df["mass_earth"], bins=MASS_BINS)
-    return counts
+    return np.sort(df["radius_km"].to_numpy())[::-1]
 
 
-def expected_counts(slope):
-    """Expected number of N_PARTICLES per shared bin for dN/dm ~ m^-q.
+def expected_cumulative(radii_km, slope):
+    """Analytic N(>=R) for dN/dR ~ R^-q truncated to [RADIUS_MIN_KM, RADIUS_MAX_KM].
 
-    Integrates the truncated power law over each bin analytically, so the
-    curve is the smooth Poisson mean the sampled histograms scatter around.
+    Normalised so N(>=RADIUS_MIN_KM) = N_PARTICLES and N(>=RADIUS_MAX_KM) = 0.
     """
-    a, b = MASS_BINS[:-1], MASS_BINS[1:]
+    r = np.asarray(radii_km, dtype=float)
     if np.isclose(slope, 1.0):
-        weight = np.log(b / a)
+        num = np.log(RADIUS_MAX_KM / r)
+        den = np.log(RADIUS_MAX_KM / RADIUS_MIN_KM)
     else:
         p = 1.0 - slope
-        weight = (b ** p - a ** p) / p
-    return N_PARTICLES * weight / weight.sum()
+        num = r ** p - RADIUS_MAX_KM ** p
+        den = RADIUS_MIN_KM ** p - RADIUS_MAX_KM ** p
+    return N_PARTICLES * num / den
 
 
-def plot_overlay(counts_by_slope):
+def _plot_one(ax, slope, radii_desc, color, marker_size, expected_color=None):
+    """Draw one slope's cumulative distribution (every body) + analytic curve."""
+    ax.plot(
+        radii_desc, RANKS,
+        color=color, lw=0, marker="o", ms=marker_size,
+        alpha=0.5, mew=0,
+    )
+    r_line = np.logspace(np.log10(RADIUS_MIN_KM), np.log10(RADIUS_MAX_KM), 300)
+    ax.plot(
+        r_line, expected_cumulative(r_line, slope),
+        color=expected_color or color, lw=1.6,
+    )
+
+
+def plot_overlay(radii_by_slope):
     fig, ax = plt.subplots(figsize=(9, 6))
 
-    for slope, counts in counts_by_slope:
-        color = _CMAP(_NORM(slope))
-        # smooth analytic expectation ...
-        ax.plot(BIN_CENTRES, expected_counts(slope), color=color, lw=2.0)
-        # ... with the actual 1000-body draw as faint markers
-        drawn = counts.astype(float)
-        drawn[drawn == 0] = np.nan
-        ax.plot(
-            BIN_CENTRES, drawn, color=color, lw=0,
-            marker="o", ms=3, alpha=0.35,
-        )
+    for slope, radii_desc in radii_by_slope:
+        _plot_one(ax, slope, radii_desc, _CMAP(_NORM(slope)), marker_size=2.5)
 
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_ylim(1e-2, 5e2)
-    ax.set_xlabel("Mass (Earth masses)")
-    ax.set_ylabel(f"Number of planetesimals per bin  (N = {N_PARTICLES})")
+    ax.set_xlim(RADIUS_MIN_KM, RADIUS_MAX_KM)
+    ax.set_ylim(0.8, N_PARTICLES * 1.3)
+    ax.set_xlabel("Radius (km)")
+    ax.set_ylabel(r"Number of planetesimals with radius $\geq R$")
     ax.set_title(
-        "Planetesimal mass distribution vs power-law slope\n"
-        r"$dN/dm \propto m^{-q}$, 1000 bodies, "
-        f"{MASS_MIN_EARTH:g}–{MASS_MAX_EARTH:g} $M_\\oplus$ "
-        "(lines: expected; points: one draw)"
+        "Planetesimal size distribution vs power-law slope\n"
+        r"$dN/dR \propto R^{-q}$, 1000 bodies each, "
+        f"{RADIUS_MIN_KM:g}–{RADIUS_MAX_KM:g} km "
+        "(points: every body; lines: analytic)"
     )
     ax.grid(alpha=0.3, which="both")
 
@@ -143,91 +144,85 @@ def plot_overlay(counts_by_slope):
     cbar.set_ticks(SLOPES)
 
     fig.tight_layout()
-    return _save(fig, "mass_distribution_slope_sweep.png")
+    return _save(fig, "radius_distribution_slope_sweep.png")
 
 
-def plot_per_slope(counts_by_slope):
-    """One standalone figure per slope: expected line + one sampled draw."""
+def plot_per_slope(radii_by_slope):
+    """One standalone figure per slope, every planetesimal shown."""
     paths = []
-    for slope, counts in counts_by_slope:
+    for slope, radii_desc in radii_by_slope:
         color = _CMAP(_NORM(slope))
 
         fig, ax = plt.subplots(figsize=(8, 5.5))
-
-        ax.plot(
-            BIN_CENTRES, expected_counts(slope),
-            color=color, lw=2.0, label="expected",
-        )
-        drawn = counts.astype(float)
-        drawn[drawn == 0] = np.nan
-        ax.plot(
-            BIN_CENTRES, drawn,
-            color=color, lw=0, marker="o", ms=5, alpha=0.6,
-            label=f"one draw of {N_PARTICLES}",
-        )
+        _plot_one(ax, slope, radii_desc, color, marker_size=4,
+                  expected_color="0.25")
 
         ax.set_xscale("log")
         ax.set_yscale("log")
-        ax.set_ylim(1e-2, 5e2)
-        ax.set_xlim(MASS_MIN_EARTH, MASS_MAX_EARTH)
-        ax.set_xlabel("Mass (Earth masses)")
-        ax.set_ylabel(f"Number of planetesimals per bin  (N = {N_PARTICLES})")
+        ax.set_xlim(RADIUS_MIN_KM, RADIUS_MAX_KM)
+        ax.set_ylim(0.8, N_PARTICLES * 1.3)
+        ax.set_xlabel("Radius (km)")
+        ax.set_ylabel(r"Number of planetesimals with radius $\geq R$")
         ax.set_title(
-            r"Planetesimal mass distribution, $dN/dm \propto m^{-q}$"
+            r"Planetesimal size distribution, $dN/dR \propto R^{-q}$"
             f"\nslope q = {slope:g}"
         )
         ax.grid(alpha=0.3, which="both")
-        ax.legend()
+        ax.legend(
+            handles=[
+                plt.Line2D([], [], color=color, lw=0, marker="o", ms=5,
+                           alpha=0.6, label=f"every body (N = {N_PARTICLES})"),
+                plt.Line2D([], [], color="0.25", lw=1.6, label="analytic N(≥R)"),
+            ]
+        )
 
         fig.tight_layout()
-        paths.append(_save(fig, f"mass_distribution_slope_q{slope:g}.png"))
+        paths.append(_save(fig, f"radius_distribution_slope_q{slope:g}.png"))
     return paths
 
 
-def plot_grid(counts_by_slope):
-    n = len(counts_by_slope)
+def plot_grid(radii_by_slope):
+    n = len(radii_by_slope)
     ncols = 4
     nrows = int(np.ceil(n / ncols))
 
     fig, axes = plt.subplots(
-        nrows, ncols, figsize=(3.2 * ncols, 2.6 * nrows),
+        nrows, ncols, figsize=(3.4 * ncols, 2.8 * nrows),
         sharex=True, sharey=True,
     )
     axes = np.atleast_1d(axes).ravel()
 
-    ymax = max(counts.max() for _, counts in counts_by_slope)
-
-    for ax, (slope, counts) in zip(axes, counts_by_slope):
-        color = _CMAP(_NORM(slope))
-        ax.step(BIN_CENTRES, counts, where="mid", color=color, lw=1.6)
-        ax.plot(BIN_CENTRES, expected_counts(slope), color="0.35", lw=1.0, ls="--")
+    for ax, (slope, radii_desc) in zip(axes, radii_by_slope):
+        _plot_one(ax, slope, radii_desc, _CMAP(_NORM(slope)), marker_size=2.5,
+                  expected_color="0.25")
         ax.set_xscale("log")
         ax.set_yscale("log")
+        ax.set_xlim(RADIUS_MIN_KM, RADIUS_MAX_KM)
+        ax.set_ylim(0.8, N_PARTICLES * 1.3)
         ax.set_title(f"q = {slope:g}", fontsize=10)
         ax.grid(alpha=0.3, which="both")
-        ax.set_ylim(0.7, ymax * 1.4)
 
     for ax in axes[n:]:
         ax.set_visible(False)
 
-    fig.supxlabel("Mass (Earth masses)")
-    fig.supylabel(f"Number per bin  (N = {N_PARTICLES})")
+    fig.supxlabel("Radius (km)")
+    fig.supylabel(r"Number with radius $\geq R$")
     fig.suptitle(
-        r"Planetesimal mass distribution vs slope $q$  ($dN/dm \propto m^{-q}$)",
+        r"Planetesimal size distribution vs slope $q$  ($dN/dR \propto R^{-q}$)",
         fontsize=14,
     )
     fig.tight_layout()
-    return _save(fig, "mass_distribution_slope_sweep_grid.png")
+    return _save(fig, "radius_distribution_slope_sweep_grid.png")
 
 
 def main():
-    counts_by_slope = [
-        (slope, sample_counts(slope, seed=BASE_SEED + i))
+    radii_by_slope = [
+        (slope, sample_radii_descending(slope, seed=BASE_SEED + i))
         for i, slope in enumerate(SLOPES)
     ]
-    plot_overlay(counts_by_slope)
-    plot_grid(counts_by_slope)
-    plot_per_slope(counts_by_slope)
+    plot_overlay(radii_by_slope)
+    plot_grid(radii_by_slope)
+    plot_per_slope(radii_by_slope)
 
 
 if __name__ == "__main__":

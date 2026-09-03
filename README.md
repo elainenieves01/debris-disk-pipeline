@@ -169,13 +169,14 @@ size spectrum (`--size-min` / `--size-max` in km).
 
 ### Slope sweep
 
-`src/mass_models/plot_slope_sweep.py` draws 1000 planetesimals for each slope
-`q` in `{0, 0.5, 1.0, ..., 5.0}` and plots number-per-mass-bin, showing how the
-spectrum tilts from mass-dominated (`q < 1`) to number-dominated (`q > 1`):
+`src/mass_models/plot_slope_sweep.py` draws 1000 planetesimals for each size
+slope `q` in `{2.0, 2.5, ..., 5.0}` (`dN/dR ∝ R^-q`, 1–100 km) and plots the
+cumulative size distribution — every body is one point at (its radius, the
+number of bodies at least that large) — with the analytic `N(≥R)` overlaid:
 
 ```bash
 python src/mass_models/plot_slope_sweep.py
 ```
 
-Writes `src/mass_models/mass_distribution_slope_sweep{,_grid}.png` plus one
-standalone figure per slope (`mass_distribution_slope_q<q>.png`).
+Writes `src/mass_models/radius_distribution_slope_sweep{,_grid}.png` plus one
+standalone figure per slope (`radius_distribution_slope_q<q>.png`).
