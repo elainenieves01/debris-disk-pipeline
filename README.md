@@ -73,7 +73,7 @@ python src/simulation/run_simulation.py config/SS_1000MP_100Myr_.yaml
 automatically, so it's usually easier to use that instead of the manual
 sequence above.
 
-### Local vs. cluster: `launch_simulation.py`
+### Local vs. remote: `launch_simulation.py`
 
 ```bash
 python src/launch/launch_simulation.py config/<your_config>.yaml
@@ -81,42 +81,53 @@ python src/launch/launch_simulation.py config/<your_config>.yaml
 
 This is a thin wrapper around `run_simulation.py` that always starts the run
 inside a detached tmux session — locally or, if the config asks for it, on a
-remote university cluster over SSH — so you never have to remember the manual
+named remote machine over SSH (a university cluster, a work computer, or any
+other host you define) — so you never have to remember the manual
 `tmux new -s ...` step. The plain direct invocation
 (`python src/simulation/run_simulation.py config.yaml`) still works exactly as
 before for a foreground local run; `launch_simulation.py` is additive.
 
 Add an optional top-level `compute:` section to choose the target (default is
-`local` if the section is omitted):
+`local` if the section is omitted). Define as many named remotes as you have
+machines — e.g. a work computer and a cluster — and pick one per run by
+setting `compute.target` to its name:
 
 ```yaml
 compute:
-  target: local          # "local" (default) | "cluster"
+  target: local          # "local" (default) | any key under remotes
   tmux_session: null     # optional; default = sanitized simulation.name
 
-  cluster:                          # required only when target: cluster
-    host: "login.cluster.university.edu"
-    username: "myusername"
-    remote_dir: "~/debris-disk-pipeline"
-    conda_env: "debris_pipeline"
-    environment_file: "environment.yml"   # relative to repo root
-    ssh_opts: []                    # e.g. ["-p", "2222"]
-    rsync_excludes: []              # appended to the built-in excludes
+  remotes:
+    cluster:
+      host: "login.cluster.university.edu"
+      username: "myusername"
+      remote_dir: "~/debris-disk-pipeline"
+      conda_env: "debris_pipeline"
+      environment_file: "environment.yml"   # relative to repo root
+      ssh_opts: []                    # e.g. ["-p", "2222"]
+      rsync_excludes: []              # appended to the built-in excludes
+    work_computer:
+      host: "work-pc.tailnet-name.ts.net"   # whatever your VPN/Tailscale gives it
+      username: "myusername"
+      remote_dir: "~/debris-disk-pipeline"
+      conda_env: "debris_pipeline"
 ```
 
-With `target: cluster`, a launch:
-1. `rsync`s the repo to `remote_dir` on the cluster (excluding `.git/`,
+With `target: cluster` (or any other remote name), a launch:
+1. `rsync`s the repo to `remote_dir` on that machine (excluding `.git/`,
    `outputs/`, `__pycache__/`, etc.).
-2. Idempotently creates the `conda_env` on the cluster from
-   `environment.yml` if it doesn't already exist there — no manual cluster
-   setup needed ahead of time.
-3. Launches the run inside a detached tmux session on the cluster and prints
-   a reattach command.
+2. Idempotently creates the `conda_env` there from `environment.yml` if it
+   doesn't already exist — no manual setup needed ahead of time.
+3. Launches the run inside a detached tmux session on that machine and
+   prints a reattach command.
 
 SSH access is assumed to be password/interactive (or 2FA) rather than
 key-based: every `ssh`/`rsync` call runs in your real terminal, so you'll be
 prompted normally at each step. If you've set up SSH keys instead, it works
-the same way, just without the prompts.
+the same way, just without the prompts. Reaching a machine that isn't on your
+current network (e.g. a work computer from your laptop) is a networking
+concern outside this code — a VPN or a mesh tool like Tailscale is the usual
+answer; `host` just needs to resolve once you're connected.
 
 Each launch step (mkdir, rsync, conda bootstrap, tmux launch) opens its own
 SSH connection today, so you may be prompted more than once per launch. If
@@ -134,6 +145,14 @@ A launch failure (rsync, SSH, or the remote conda/tmux bootstrap) prints
 `LAUNCH FAILED: ...` naming the step that failed and exits non-zero — unlike
 notification failures below, this always surfaces loudly since nothing is
 running yet.
+
+If your university cluster turns out to be a shared HPC center rather than a
+personal/lab server, check its policy before using this: many shared clusters
+forbid running real computation directly on the login node (which is what
+this launcher does today via tmux) and expect jobs to go through a scheduler
+like Slurm or PBS instead — running against policy risks the job being
+killed by a resource monitor. Job-scheduler submission support can be added
+here later if your cluster requires it.
 
 ### Completion / failure notifications
 

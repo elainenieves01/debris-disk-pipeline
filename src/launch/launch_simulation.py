@@ -1,6 +1,7 @@
-"""Launch a simulation locally or on a university cluster, per the config's
-`compute:` block. Either way, the run starts inside a detached tmux session
-so it survives the launching terminal (or a Claude Code session) closing.
+"""Launch a simulation locally or on a named remote machine (a university
+cluster, a work computer, ...), per the config's `compute:` block. Either
+way, the run starts inside a detached tmux session so it survives the
+launching terminal (or a Claude Code session) closing.
 
     python src/launch/launch_simulation.py config/<file>.yaml
 
@@ -19,7 +20,7 @@ for _subdir in ("config_io", "launch"):
 
 from config_utils import read_config  # noqa: E402
 from tmux_utils import session_name_for  # noqa: E402
-import remote_cluster  # noqa: E402
+import remote  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUN_SIMULATION_SCRIPT = REPO_ROOT / "src" / "simulation" / "run_simulation.py"
@@ -50,7 +51,7 @@ def launch_local(config, config_path):
     config_abs_path = str(Path(config_path).resolve())
     inner_command = (
         f"{sys.executable} -u {RUN_SIMULATION_SCRIPT} '{config_abs_path}'; "
-        f"ec=$?; echo; echo \"[finished, exit $ec]; press enter to close\"; read"
+        f'ec=$?; echo; echo "[finished, exit $ec]"; exit $ec'
     )
     result = subprocess.run(
         ["tmux", "new-session", "-d", "-s", session, "bash", "-lc", inner_command],
@@ -72,14 +73,12 @@ def dispatch(config, config_path):
 
     if target == "local":
         launch_local(config, config_path)
-    elif target == "cluster":
+    else:
         try:
-            remote_cluster.remote_launch(config, config_path)
-        except remote_cluster.RemoteLaunchError as error:
+            remote.remote_launch(config, config_path, target)
+        except remote.RemoteLaunchError as error:
             print(f"LAUNCH FAILED: {error}", file=sys.stderr)
             sys.exit(1)
-    else:
-        raise ValueError(f"Unknown compute.target: {target!r}")
 
 
 if __name__ == "__main__":

@@ -3,8 +3,7 @@
 import yaml
 
 
-VALID_COMPUTE_TARGETS = ("local", "cluster")
-REQUIRED_CLUSTER_KEYS = ("host", "username", "remote_dir", "conda_env")
+REQUIRED_REMOTE_KEYS = ("host", "username", "remote_dir", "conda_env")
 
 
 def read_config(filename):
@@ -52,21 +51,20 @@ def validate_config(config):
             )
 
         target = compute.get("target", "local")
-        if target not in VALID_COMPUTE_TARGETS:
-            raise ValueError(
-                f"compute.target must be one of {VALID_COMPUTE_TARGETS}, got {target!r}."
-            )
-
-        if target == "cluster":
-            cluster = compute.get("cluster")
-            if not isinstance(cluster, dict):
+        if target != "local":
+            remotes = compute.get("remotes") or {}
+            remote = remotes.get(target)
+            if not isinstance(remote, dict):
+                available = ", ".join(sorted(remotes)) or "(none defined)"
                 raise KeyError(
-                    "compute.target is 'cluster' but no 'compute.cluster' block was given."
+                    f"compute.target={target!r} has no matching entry under "
+                    f"compute.remotes. Available remotes: {available}."
                 )
-            missing = [key for key in REQUIRED_CLUSTER_KEYS if not cluster.get(key)]
+            missing = [key for key in REQUIRED_REMOTE_KEYS if not remote.get(key)]
             if missing:
                 raise KeyError(
-                    "compute.cluster is missing required key(s): " + ", ".join(missing)
+                    f"compute.remotes.{target} is missing required key(s): "
+                    + ", ".join(missing)
                 )
 
 

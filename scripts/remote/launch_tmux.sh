@@ -19,6 +19,6 @@ conda activate "$ENV_NAME"
 
 cd "$REMOTE_DIR"
 tmux new-session -d -s "$SESSION" \
-  "python -u src/simulation/run_simulation.py '$CONFIG_PATH'; ec=\$?; echo; echo \"[finished, exit \$ec]; press enter to close\"; read"
+  "python -u src/simulation/run_simulation.py '$CONFIG_PATH'; ec=\$?; echo; echo \"[finished, exit \$ec]\"; exit \$ec"
 
 echo "[launch] started tmux session '$SESSION' on $(hostname)"

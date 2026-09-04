@@ -12,7 +12,7 @@ for _sub in ("config_io", "launch"):
     sys.path.insert(0, os.path.join(_SRC, _sub))
 
 import launch_simulation  # noqa: E402
-import remote_cluster  # noqa: E402
+import remote  # noqa: E402
 from tmux_utils import sanitize_session_name, session_name_for  # noqa: E402
 
 
@@ -39,17 +39,19 @@ LOCAL_CONFIG = {
     "compute": {"target": "local"},
 }
 
+REMOTES = {
+    "cluster": {"host": "h", "username": "u", "remote_dir": "~/r", "conda_env": "e"},
+    "work_computer": {"host": "w", "username": "u", "remote_dir": "~/r", "conda_env": "e"},
+}
+
 CLUSTER_CONFIG = {
     "simulation": {"name": "pytest_cluster"},
-    "compute": {
-        "target": "cluster",
-        "cluster": {
-            "host": "h",
-            "username": "u",
-            "remote_dir": "~/r",
-            "conda_env": "e",
-        },
-    },
+    "compute": {"target": "cluster", "remotes": REMOTES},
+}
+
+WORK_COMPUTER_CONFIG = {
+    "simulation": {"name": "pytest_work_computer"},
+    "compute": {"target": "work_computer", "remotes": REMOTES},
 }
 
 
@@ -67,15 +69,27 @@ def test_dispatch_no_compute_block_defaults_local():
 
 
 def test_dispatch_cluster_calls_remote_launch():
-    with patch("remote_cluster.remote_launch") as mock_remote:
+    with patch("remote.remote_launch") as mock_remote:
         launch_simulation.dispatch(CLUSTER_CONFIG, "config/pytest_cluster.yaml")
-    mock_remote.assert_called_once_with(CLUSTER_CONFIG, "config/pytest_cluster.yaml")
+    mock_remote.assert_called_once_with(
+        CLUSTER_CONFIG, "config/pytest_cluster.yaml", "cluster"
+    )
+
+
+def test_dispatch_work_computer_calls_remote_launch():
+    with patch("remote.remote_launch") as mock_remote:
+        launch_simulation.dispatch(
+            WORK_COMPUTER_CONFIG, "config/pytest_work_computer.yaml"
+        )
+    mock_remote.assert_called_once_with(
+        WORK_COMPUTER_CONFIG, "config/pytest_work_computer.yaml", "work_computer"
+    )
 
 
 def test_dispatch_cluster_launch_error_exits_nonzero(capsys):
     with patch(
-        "remote_cluster.remote_launch",
-        side_effect=remote_cluster.RemoteLaunchError("rsync failed"),
+        "remote.remote_launch",
+        side_effect=remote.RemoteLaunchError("rsync failed"),
     ):
         with pytest.raises(SystemExit) as exc_info:
             launch_simulation.dispatch(CLUSTER_CONFIG, "config/pytest_cluster.yaml")
@@ -83,10 +97,12 @@ def test_dispatch_cluster_launch_error_exits_nonzero(capsys):
     assert "LAUNCH FAILED" in capsys.readouterr().err
 
 
-def test_dispatch_unknown_target_raises():
+def test_dispatch_target_with_no_matching_remote_exits_nonzero(capsys):
     config = {"simulation": {"name": "x"}, "compute": {"target": "quantum"}}
-    with pytest.raises(ValueError):
+    with pytest.raises(SystemExit) as exc_info:
         launch_simulation.dispatch(config, "config/x.yaml")
+    assert exc_info.value.code == 1
+    assert "LAUNCH FAILED" in capsys.readouterr().err
 
 
 def _mock_success():
