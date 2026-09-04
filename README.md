@@ -154,6 +154,44 @@ like Slurm or PBS instead — running against policy risks the job being
 killed by a resource monitor. Job-scheduler submission support can be added
 here later if your cluster requires it.
 
+### Surviving a crash or power outage
+
+With `simulation.dump: true` (set in every current config), the run writes a
+resume checkpoint (`outputs/<name>/dump_data.json`) at every output step and
+appends each step to the run's SimulationArchive (`outputs/<name>/<name>.bin`).
+Relaunching the same config after an interruption detects the checkpoint and
+resumes from the last completed output step instead of starting over
+(`build_simulation`/`run_simulation` in `src/simulation/run_simulation.py`).
+The checkpoint write itself is atomic (write-to-temp, then rename) — a crash
+mid-write can never leave a corrupt checkpoint behind.
+
+That covers *resuming*, but not *restarting the process itself* after real
+power loss — nothing brings the job back up on its own by default, and tmux
+(being an in-memory server) doesn't survive a reboot either. For a run you
+want to survive that, install the provided systemd user service template so
+it's supervised and comes back automatically:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/debris-sim@.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+loginctl enable-linger "$USER"   # let user services start at boot without a login
+```
+
+Then, for each config you want auto-restarted (use the config's filename
+without `.yaml`):
+
+```bash
+systemctl --user enable --now debris-sim@<config_name>.service   # starts it now too
+# or, for a run already going in tmux (avoid a duplicate process):
+systemctl --user enable debris-sim@<config_name>.service         # enable only; it'll
+                                                                   # take over on the next boot
+```
+
+`Restart=on-failure` means it only restarts on an actual crash/reboot, never
+after a clean successful finish. Follow live output with
+`journalctl --user -u debris-sim@<config_name>.service -f`.
+
 ### Completion / failure notifications
 
 `run_simulation.py` can POST a status line to an [ntfy.sh](https://ntfy.sh)

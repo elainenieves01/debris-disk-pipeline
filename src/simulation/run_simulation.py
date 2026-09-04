@@ -642,12 +642,16 @@ def get_particles(snap_number, sim, dump_path):
                 "vy": p.vy,
                 "vz": p.vz
             }
-        
-        
-        
-    
-    with open(dump_path, "w") as file:
+
+    # Write to a temp file and atomically rename over dump_path, so a crash
+    # (power loss, kill -9) mid-write can never leave a truncated/corrupt
+    # checkpoint -- the resume path either sees the old complete file or the
+    # new complete file, never a half-written one.
+    dump_path = Path(dump_path)
+    tmp_path = dump_path.with_suffix(dump_path.suffix + ".tmp")
+    with open(tmp_path, "w") as file:
         json.dump(dict_row, file, indent=4)
+    os.replace(tmp_path, dump_path)
 
 
 
