@@ -1,0 +1,83 @@
+simulation:
+  name: "SS_100MP_100Myr_6e-5Mearth"
+  random_seed: 0
+  output_dir: "outputs"
+  dump: true
+
+units:
+  time: "yr"
+  length: "AU"
+  mass: "Msun"
+
+integration:
+  integrator: "mercurius"
+  timestep_fraction_of_planet_period: 0.1
+  maxtime: 100000000
+  time_step: 10000
+  exit_max_distance: 1000.0
+
+star:
+  mass: 1.00
+
+giant_planet: null
+
+disk:
+  amin: 95
+  amax: 105
+  emin: 0.0
+  emax: 3.2e-5
+  imin_deg: 0.0
+  imax_deg: 3.2e-5
+
+massive_planetesimals:
+  N: 100
+  # Set exactly one of the following:
+  total_disk_mass_earth: 6e-05          # total disk mass 6e-5 M_earth (near-massless control)
+  #individual_MP_mass_plutos: 2.659031e-05   # per-MP mass; disk mass = value * N
+  #mass_fraction_of_giant_planet: 0.0005    # (legacy) needs a giant planet
+
+test_particles:
+  N: 0
+  distribution: "uniform"
+
+notify:
+  enabled: true
+  ntfy_topic: "https://ntfy.sh/elaine-hd216435-run"
+
+plots:
+  enabled: true
+  dpi: 200
+
+  scale:
+    x: "linear"
+    y: "linear"
+
+  limits:
+    mode: "auto"
+    #mode: "manual"
+    ae:
+      xlim: null
+      ylim: null
+
+    ai:
+      xlim: null
+      ylim: null
+
+    e_evolution:
+      xlim: null
+      ylim: null
+
+    i_evolution:
+      xlim: null
+      ylim: null
+
+    a_evolution:
+      xlim: null
+      ylim: null
+
+    survival:
+      xlim: null
+      ylim: null
+
+  final_conditions:
+    output_file: "outputs/FinalConditions.png"

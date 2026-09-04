@@ -1,0 +1,38 @@
+run_name: Condensed_sim_test_quick
+run_uuid: 04b0c8e7-b992-40a2-a99d-ebff003daedc
+created: '2026-09-04T16:49:19-04:00'
+command: /home/elaine/debris-disk-pipeline/src/simulation/run_simulation.py /home/elaine/debris-disk-pipeline/config/Condensed_sim_test_quick.yaml
+config:
+  source_path: /home/elaine/debris-disk-pipeline/config/Condensed_sim_test_quick.yaml
+  frozen_copy: config.yaml
+git:
+  available: true
+  commit: 7b03a88b3fe9735b5c9c121e57767164b2552cc5
+  short: 7b03a88
+  branch: feature/flexible-mass-and-notifications
+  describe: 7b03a88-dirty
+  dirty: true
+  dirty_files:
+  - README.md
+  - scripts/remote/launch_tmux.sh
+  - src/config_io/config_utils.py
+  - src/launch/launch_simulation.py
+  - src/launch/remote_cluster.py
+  - tests/test_compute_config.py
+  - tests/test_launch_simulation.py
+  - tests/test_remote_cluster.py
+software:
+  python: 3.12.11
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: elaine-H410H6-M2
+  platform: Linux-6.8.0-51-generic-x86_64-with-glibc2.39
+finished: '2026-09-04T16:49:41-04:00'
+wall_runtime_seconds: 22.2
+outcome: completed
+initial_particle_count: 101
+final_particle_count: 101

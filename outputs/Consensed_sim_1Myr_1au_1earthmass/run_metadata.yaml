@@ -1,0 +1,27 @@
+run_name: Consensed_sim_1Myr_1au_1earthmass
+run_uuid: 712bc651-064e-4397-84d4-b1c473a1586a
+created: '2026-09-04T16:37:27-04:00'
+command: /home/elaine/debris-disk-pipeline/src/simulation/run_simulation.py /home/elaine/debris-disk-pipeline/config/Condensed_sim_1Myr_1au_1earthmass.yaml
+config:
+  source_path: /home/elaine/debris-disk-pipeline/config/Condensed_sim_1Myr_1au_1earthmass.yaml
+  frozen_copy: config.yaml
+git:
+  available: true
+  commit: 7b03a88b3fe9735b5c9c121e57767164b2552cc5
+  short: 7b03a88
+  branch: feature/flexible-mass-and-notifications
+  describe: 7b03a88-dirty
+  dirty: true
+  dirty_files:
+  - scripts/remote/launch_tmux.sh
+  - src/launch/launch_simulation.py
+software:
+  python: 3.12.11
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: elaine-H410H6-M2
+  platform: Linux-6.8.0-51-generic-x86_64-with-glibc2.39
