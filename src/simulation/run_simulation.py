@@ -13,7 +13,11 @@ from config_utils import read_config
 from summary_figures import generate_summary_figures
 from report import generate_report
 from mass_models import generate_distribution
-from plots import plot_per_particle, plot_differential_histogram
+from plots import (
+    plot_per_particle,
+    plot_differential_histogram,
+    plot_count_histograms,
+)
 from tee_output import start_capturing_stdout, stop_capturing_stdout
 from provenance import (
     run_output_dir_for,
@@ -235,6 +239,7 @@ def _write_distribution_diagnostics(dist_df, dist_cfg, config):
         plot_differential_histogram(
             dist_df, out_dir, slope=float(dist_cfg["slope"]), label=label
         )
+        plot_count_histograms(dist_df, out_dir, label=label)
     except Exception as error:
         print(f"WARNING: could not write distribution diagnostics: {error}")
 
