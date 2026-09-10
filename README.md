@@ -303,3 +303,39 @@ python src/mass_models/plot_slope_sweep.py
 
 Writes `src/mass_models/radius_distribution_slope_sweep{,_grid}.png` plus one
 standalone figure per slope (`radius_distribution_slope_q<q>.png`).
+
+Flags override the defaults: `--n`, `--radius-min` / `--radius-max`,
+`--slope-min` / `--slope-max` / `--slope-step`, `--seed`, and `--outdir` to write
+somewhere other than the source tree. Add `--per-slope` to also emit
+`<outdir>/slope_q<q>/distribution.csv` and the per-particle / differential /
+count-histogram figures for every slope:
+
+```bash
+python src/mass_models/plot_slope_sweep.py \
+    --n 500 --radius-max 200 \
+    --outdir src/mass_models/radius_slope_sweep_200km_500N --per-slope
+```
+
+### Cascade selection
+
+The largest bodies of a finite power-law draw scatter away from `N(≥R)` (few
+bodies → large Poisson noise), so simply taking "the N largest" inherits that
+noisy tail. `src/mass_models/make_cascade_selection.py` instead samples a big
+cascade (`--n-cascade`, drawn in chunks so it scales past memory), compares the
+sampled `N(≥R)` to the analytic power law, drops every small-count rank that
+deviates by more than `--tol` (fractional), and keeps the contiguous block of
+`--n-keep` bodies just below the deepest deviation — the largest bodies that
+still trace `dN/dR ∝ R^-q`. A larger cascade pushes that block closer to
+`--radius-max`.
+
+```bash
+python src/mass_models/make_cascade_selection.py \
+    --n-cascade 5_000_000 --n-keep 800 --radius-max 200 \
+    --outdir src/mass_models/cascade_selection_200km_800keep
+```
+
+Per slope: `slope_q<q>/selected.csv` and the per-particle / differential /
+count-histogram figures for the kept sample (`--save-cascade` also dumps the
+retained top ranks). Spanning all slopes: `residual_diagnostic_grid.png`
+(sampled/analytic vs rank, cut marked), `selection_cumulative_grid.png`
+(dropped tail / kept block / analytic), and `selection_summary.csv`.
