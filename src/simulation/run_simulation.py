@@ -660,6 +660,238 @@ def get_particles(snap_number, sim, dump_path):
 
 
 
+# Ida & Makino (1993) numerical stirring factor; the canonical value adopted by
+# Krivov & Booth (2018) in their Eq. 9. calibration/plot_kirvov_calibration.py
+# uses this as a fixed input -- here we invert Eqs. 9-10 to back out the value
+# the N-body run actually produced.
+KIRVOV_C_E_REFERENCE = 40.0
+
+
+def _belt_geometry(config):
+    """(amin, amax, a_belt, da_belt, Mstar) from the config's disk/star blocks."""
+    Mstar = float(config["star"]["mass"])
+    amin = float(config["disk"]["amin"])
+    amax = float(config["disk"]["amax"])
+    return amin, amax, 0.5 * (amin + amax), amax - amin, Mstar
+
+
+def compute_effective_stirring_C_e(sim, config):
+    """Back out the Krivov & Booth (2018) self-stirring constant C_e from a run.
+
+    Krivov & Booth (2018, MNRAS 479, 3300), two-population self-stirring case
+    -- negligible-mass field planetesimals stirred by equal-mass stirrers on
+    near-circular orbits (their Eqs. 9 and 10):
+
+        T^-1   = (1 / 2 pi) * C_e * Omega * (a / da) * (M / Mstar) * (Mdisc / Mstar)
+        RMS(e) = (2 t / T)^(1/4)
+
+    with Omega = sqrt(G Mstar / a^3) the mean motion at the belt centre, a / da
+    the belt radius over its full width, M the individual stirrer mass and Mdisc
+    the total mass in stirrers -- exactly the terms formed in
+    ``calibration/plot_kirvov_calibration.py`` (``krivov_rms_e``).
+
+    Measures RMS(e) of the massive planetesimals at the current ``sim`` state
+    (orbits relative to the star, matching ``src/plotting/summary_figures.py``),
+    inverts Eq. 10 for T, then Eq. 9 for C_e. Returns a dict of the ingredients
+    and results, or ``None`` if the run has no massive planetesimals / t <= 0.
+    """
+    if int(config["massive_planetesimals"]["N"]) <= 0 or sim.t <= 0.0:
+        return None
+
+    star = sim.particles[0]
+    mp_indices = [
+        k for k in range(1, sim.N)
+        if (sim.particles[k].name or "").startswith("MP_")
+    ]
+    if not mp_indices:
+        return None
+
+    n_mp = len(mp_indices)
+    e_sq = [sim.particles[k].orbit(primary=star).e ** 2 for k in mp_indices]
+    rms_e = float(np.sqrt(np.mean(e_sq)))
+
+    m_disc = float(sum(sim.particles[k].m for k in mp_indices))  # Msun
+    m_indiv = m_disc / n_mp                                      # Msun
+
+    _, _, a_belt, da_belt, Mstar = _belt_geometry(config)
+    omega = float(np.sqrt(sim.G * Mstar / a_belt ** 3))  # mean motion at belt centre
+
+    # Invert RMS(e) = (2 t / T)^(1/4)  ->  T^-1 = RMS(e)^4 / (2 t)
+    t_inv = rms_e ** 4 / (2.0 * sim.t)
+
+    # Invert Eq. 9 for C_e.
+    c_e = (
+        2.0 * np.pi * t_inv
+        / (omega * (a_belt / da_belt) * (m_indiv / Mstar) * (m_disc / Mstar))
+    )
+
+    return {
+        "t": float(sim.t),
+        "n_mp": n_mp,
+        "rms_e": rms_e,
+        "a_belt": a_belt,
+        "da_belt": da_belt,
+        "a_over_da": a_belt / da_belt,
+        "Mstar": Mstar,
+        "m_indiv": m_indiv,
+        "m_disc": m_disc,
+        "omega": omega,
+        "T": float(1.0 / t_inv),
+        "C_e": float(c_e),
+        "has_giant_planet": config.get("giant_planet") is not None,
+        "exceeds_reference": bool(c_e >= KIRVOV_C_E_REFERENCE),
+        "reference": KIRVOV_C_E_REFERENCE,
+    }
+
+
+def report_effective_stirring_C_e(sim, config):
+    """Print ``compute_effective_stirring_C_e`` and WARN if C_e >= 40. Never raises."""
+    try:
+        r = compute_effective_stirring_C_e(sim, config)
+        if r is None:
+            return
+
+        print("\nKrivov & Booth (2018) self-stirring check (Eqs. 9-10):")
+        if r["has_giant_planet"]:
+            print(
+                "  NOTE: a giant planet is present; the two-population "
+                "self-stirring model assumes no external perturber, so C_e "
+                "below is only indicative."
+            )
+        print(f"  Final time:                 t = {r['t']:.6e} yr")
+        print(f"  RMS eccentricity ({r['n_mp']} MPs):   {r['rms_e']:.6e}")
+        print(
+            f"  Belt geometry:              a = {r['a_belt']:g}, "
+            f"da = {r['da_belt']:g}, a/da = {r['a_over_da']:g}"
+        )
+        print(
+            f"  Masses:                     M_indiv = {r['m_indiv']:.6e} Msun, "
+            f"M_disc = {r['m_disc']:.6e} Msun"
+        )
+        print(f"  Implied stirring timescale: T = {r['T']:.6e} yr")
+        print(f"  Effective stirring factor:  C_e = {r['C_e']:.4f}")
+
+        if r["exceeds_reference"]:
+            print(
+                f"  WARNING: C_e = {r['C_e']:.4f} >= {r['reference']:g} "
+                "(Ida & Makino 1993 canonical value) -- this run stirs at or "
+                "above the analytic self-stirring rate."
+            )
+    except Exception as error:
+        print(f"WARNING: could not compute effective C_e: {error}")
+
+
+def compute_stirrer_disk_coverage(sim, config):
+    """Check that the stirrers' feeding zones span the belt (Krivov & Booth 2018).
+
+    Self-stirring assumes the stirrers can dynamically reach across the whole
+    disk width, i.e.
+
+        N * delta_af  >=  delta_a
+
+    with delta_a = amax - amin the belt width, N the number of stirrers inside
+    the belt, and per stirrer
+
+        delta_af = 8 sqrt(3) * h_M * a_M ,   h_M = (M / (3 Mstar))^(1/3)
+
+    (h_M the reduced/mutual Hill factor, a_M the stirrer semi-major axis).
+
+    "Stirrers inside the disk" = the massive planetesimals, plus the giant
+    planet if present, whose semi-major axis lies in [amin, amax]. delta_af is
+    summed over them, which equals N * delta_af in the equal-mass case.
+
+    Returns a dict of the ingredients and the ``covered`` verdict, or ``None``
+    if there are no in-belt stirrers / the belt width is non-positive.
+    """
+    amin, amax, _, _, Mstar = _belt_geometry(config)
+    delta_a = amax - amin
+    if delta_a <= 0.0:
+        return None
+
+    star = sim.particles[0]
+    stirrers = []  # (name, mass_solar, a)
+    for k in range(1, sim.N):
+        p = sim.particles[k]
+        name = p.name or ""
+        if not (name.startswith("MP_") or name == "GP"):
+            continue
+        a = p.orbit(primary=star).a
+        if amin <= a <= amax:
+            stirrers.append((name, p.m, a))
+
+    if not stirrers:
+        return None
+
+    def delta_af(mass_solar, a):
+        h_M = (mass_solar / (3.0 * Mstar)) ** (1.0 / 3.0)
+        return 8.0 * np.sqrt(3.0) * h_M * a
+
+    widths = [delta_af(m, a) for _, m, a in stirrers]
+    total_width = float(np.sum(widths))
+    n_stirrers = len(stirrers)
+
+    return {
+        "amin": amin,
+        "amax": amax,
+        "delta_a": delta_a,
+        "n_stirrers": n_stirrers,
+        "has_giant_planet": any(name == "GP" for name, _, _ in stirrers),
+        "delta_af_mean": total_width / n_stirrers,
+        "delta_af_sum": total_width,
+        "ratio": total_width / delta_a,
+        "covered": bool(total_width >= delta_a),
+    }
+
+
+def check_stirrer_disk_coverage(sim, config):
+    """Run ``compute_stirrer_disk_coverage``; on failure WARN and, when stdin is
+    a TTY, pause and ask whether to continue (aborting on anything but yes). In a
+    non-interactive session it prints the warning and continues.
+    """
+    r = compute_stirrer_disk_coverage(sim, config)
+    if r is None:
+        return
+
+    print("\nStirrer-coverage check (Krivov & Booth 2018: N x delta_af >= delta_a):")
+    print(
+        f"  Stirrers inside the belt [{r['amin']:g}, {r['amax']:g}]: "
+        f"N = {r['n_stirrers']}"
+        + ("  (incl. giant planet)" if r["has_giant_planet"] else "")
+    )
+    print(
+        f"  delta_af = 8 sqrt(3) h_M a_M:  mean = {r['delta_af_mean']:.6e}, "
+        f"sum over stirrers = {r['delta_af_sum']:.6e}"
+    )
+    print(f"  Belt width delta_a = {r['delta_a']:.6e}")
+    print(f"  Coverage ratio (sum delta_af / delta_a) = {r['ratio']:.3f}")
+
+    if r["covered"]:
+        print("  OK: stirrer feeding zones span the belt.")
+        return
+
+    print(
+        f"  WARNING: stirrer feeding zones do NOT span the belt "
+        f"(sum delta_af = {r['delta_af_sum']:.4e} < delta_a = {r['delta_a']:.4e}). "
+        "The Krivov & Booth (2018) self-stirring picture assumes the stirrers "
+        "can dynamically reach across the whole disk width."
+    )
+
+    if not sys.stdin.isatty():
+        print(
+            "  Non-interactive session: continuing anyway (cannot prompt). "
+            "Re-run interactively to be asked for confirmation."
+        )
+        return
+
+    reply = input("  Continue the simulation anyway? [y/N] ").strip().lower()
+    if reply not in ("y", "yes"):
+        raise SystemExit(
+            "Aborted before integration: N x delta_af >= delta_a is not "
+            "satisfied (stirrers do not span the belt)."
+        )
+    print("  Continuing at user request.")
+
+
 def run_simulation(config, config_path=None):
     terminal_buffer = start_capturing_stdout()
 
@@ -719,6 +951,8 @@ def run_simulation(config, config_path=None):
 
 
     sim = build_simulation(config)
+
+    check_stirrer_disk_coverage(sim, config)
 
     E0 = sim.energy()
 
@@ -816,6 +1050,8 @@ def run_simulation(config, config_path=None):
 
     print("\nSimulation complete.")
     print(f"Total runtime: {format_time(total_runtime)}")
+
+    report_effective_stirring_C_e(sim, config)
 
     # Quick archive check
     initial_N = None

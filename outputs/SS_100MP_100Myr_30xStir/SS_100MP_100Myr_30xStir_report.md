@@ -30099,3 +30099,25 @@ Outer plotted edge = 104.89 AU
 Saved: outputs/SS_100MP_100Myr_30xStir/figures/xy_initial_final.png
 All summary figures saved.
 ```
+
+## Retroactive Krivov & Booth (2018) self-stirring diagnostics
+
+_Added retroactively by `calibration/retroactive_kirvov_checks.py`; this run predates the in-pipeline checks in `src/simulation/run_simulation.py`. The same functions a live run now uses are applied to the archive: the coverage condition to the first snapshot (initial conditions), C_e to the last snapshot. Config used: `outputs/SS_100MP_100Myr_30xStir/config.yaml`._
+
+### Effective stirring constant C_e (Eqs. 9-10, final snapshot)
+
+- Final time: t = 1.000000e+08 yr
+- RMS eccentricity of the 100 massive planetesimals: 1.066903e-01
+- Belt geometry: a = 100 au, da = 10 au, a/da = 10
+- Masses: M_indiv = 2.522931e-07 Msun, M_disc = 2.522931e-05 Msun
+- Mean motion at belt centre: Omega = 6.283067e-03 yr^-1
+- Implied stirring timescale: T = 1.543581e+12 yr
+- **Effective stirring constant: C_e = 10.1781** (Ida & Makino 1993 / Krivov & Booth 2018 reference value: 40)
+
+### Stirrer-coverage condition  N x delta_af >= delta_a (initial snapshot)
+
+- Stirrers inside the belt [95, 105] au: N = 100
+- delta_af = 8 sqrt(3) h_M a_M: mean = 6.059055e+00 au, sum over stirrers = 6.059055e+02 au
+- Belt width: delta_a = 1.000000e+01 au
+- Coverage ratio (sum delta_af / delta_a) = 60.591
+- **Condition satisfied**: the stirrer feeding zones span the belt.
