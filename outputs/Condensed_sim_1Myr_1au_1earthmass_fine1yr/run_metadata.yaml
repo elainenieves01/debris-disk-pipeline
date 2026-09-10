@@ -31,3 +31,8 @@ software:
 host:
   hostname: elaine-H410H6-M2
   platform: Linux-6.8.0-51-generic-x86_64-with-glibc2.39
+finished: '2026-09-06T19:41:20-03:00'
+wall_runtime_seconds: 179449.8
+outcome: completed
+initial_particle_count: 101
+final_particle_count: 101
