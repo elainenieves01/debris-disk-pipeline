@@ -19,7 +19,11 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 
 from mass_models import generate_distribution, DOHNANYI_MASS_SLOPE
-from plots import plot_per_particle, plot_differential_histogram
+from plots import (
+    plot_per_particle,
+    plot_differential_histogram,
+    plot_count_histograms,
+)
 
 
 def parse_args(argv=None):
@@ -109,6 +113,7 @@ def main(argv=None):
     label = f"Dohnanyi {args.variable} spectrum (q = {args.slope:g}, N = {args.n})"
     plot_per_particle(df, outdir, label=label)
     plot_differential_histogram(df, outdir, slope=args.slope, label=label)
+    plot_count_histograms(df, outdir, label=label)
 
     _summary(df)
     return df

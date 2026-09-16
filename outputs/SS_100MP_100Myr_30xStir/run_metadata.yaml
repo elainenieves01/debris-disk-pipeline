@@ -1,0 +1,29 @@
+run_name: SS_100MP_100Myr_30xStir
+run_uuid: 52e314a6-abd9-4d3f-be1e-9bde28a12ebd
+created: '2026-08-31T12:27:06-04:00'
+command: src/simulation/run_simulation.py config/SS_100MP_100Myr_30xStir.yaml
+config:
+  source_path: config/SS_100MP_100Myr_30xStir.yaml
+  frozen_copy: config.yaml
+git:
+  available: true
+  commit: f7c5a9b9de1c693051ae7abcf05e6bbef24b7fde
+  short: f7c5a9b
+  branch: feature/flexible-mass-and-notifications
+  describe: f7c5a9b
+  dirty: false
+software:
+  python: 3.12.11
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: elaine-H410H6-M2
+  platform: Linux-6.8.0-51-generic-x86_64-with-glibc2.39
+finished: '2026-08-31T21:37:04-04:00'
+wall_runtime_seconds: 32997.7
+outcome: completed
+initial_particle_count: 101
+final_particle_count: 101

@@ -6,10 +6,6 @@ __pycache__/
 venv/
 env/
 
-# Outputs
-outputs/*
-!outputs/.gitkeep
-
 logs/*
 !logs/.gitkeep
 

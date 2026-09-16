@@ -3,6 +3,9 @@
 import yaml
 
 
+REQUIRED_REMOTE_KEYS = ("host", "username", "remote_dir", "conda_env")
+
+
 def read_config(filename):
     """
     Read a YAML configuration file and return it as a Python dictionary.
@@ -37,6 +40,32 @@ def validate_config(config):
 
     # "giant_planet" is optional: it may be omitted entirely or set to null
     # to integrate the disk around the star alone.
+
+    # "compute" is optional: absence means run locally (see launch_simulation.py).
+    compute = config.get("compute")
+    if compute is not None:
+        if not isinstance(compute, dict):
+            raise TypeError(
+                "Config section 'compute' must be a mapping, "
+                "e.g. 'compute: {target: local}'."
+            )
+
+        target = compute.get("target", "local")
+        if target != "local":
+            remotes = compute.get("remotes") or {}
+            remote = remotes.get(target)
+            if not isinstance(remote, dict):
+                available = ", ".join(sorted(remotes)) or "(none defined)"
+                raise KeyError(
+                    f"compute.target={target!r} has no matching entry under "
+                    f"compute.remotes. Available remotes: {available}."
+                )
+            missing = [key for key in REQUIRED_REMOTE_KEYS if not remote.get(key)]
+            if missing:
+                raise KeyError(
+                    f"compute.remotes.{target} is missing required key(s): "
+                    + ", ".join(missing)
+                )
 
 
 def print_config(config):

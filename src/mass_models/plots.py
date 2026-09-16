@@ -49,25 +49,29 @@ def plot_per_particle(df, output_dir, label="", dpi=200):
     """
     Scatter of every particle's mass and radius, ordered by descending mass.
 
-    Left panel:  mass (Earth masses) vs rank.
-    Right panel: radius (km) vs rank.
+    Left panel:  rank vs mass (Earth masses).
+    Right panel: rank vs radius (km).
+
+    Rank runs 1..N over bodies sorted most-to-least massive, so each curve is
+    effectively the cumulative count N(>= x): mass / radius on the x-axis, a
+    running body count on the y-axis.
     """
     ordered = df.sort_values("mass_kg", ascending=False).reset_index(drop=True)
     rank = np.arange(1, len(ordered) + 1)
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-    axes[0].scatter(rank, ordered["mass_earth"], s=12)
-    axes[0].set_yscale("log")
-    axes[0].set_xlabel("Rank (most to least massive)")
-    axes[0].set_ylabel("Mass (Earth masses)")
+    axes[0].scatter(ordered["mass_earth"], rank, s=12)
+    axes[0].set_xscale("log")
+    axes[0].set_xlabel("Mass (Earth masses)")
+    axes[0].set_ylabel("Rank (most to least massive)")
     axes[0].set_title("Individual masses")
     axes[0].grid(alpha=0.3)
 
-    axes[1].scatter(rank, ordered["radius_km"], s=12, color="C1")
-    axes[1].set_yscale("log")
-    axes[1].set_xlabel("Rank (most to least massive)")
-    axes[1].set_ylabel("Radius (km)")
+    axes[1].scatter(ordered["radius_km"], rank, s=12, color="C1")
+    axes[1].set_xscale("log")
+    axes[1].set_xlabel("Radius (km)")
+    axes[1].set_ylabel("Rank (most to least massive)")
     axes[1].set_title("Individual radii")
     axes[1].grid(alpha=0.3)
 
@@ -99,6 +103,9 @@ def plot_differential_histogram(df, output_dir, slope, label="", dpi=200):
     Log-log differential distributions dN/dm and dN/dR with the input
     power-law slope overlaid.
 
+    Axes are transposed relative to the usual convention: the differential
+    density (dN/dm, dN/dR) is on the x-axis and mass / radius on the y-axis.
+
     The sampled variable follows dN/dx ~ x^-slope.  Under m ~ R^3 the other
     variable follows an equivalent slope: if mass is sampled with slope q,
     the size slope is 3q - 2 (and vice versa).
@@ -113,16 +120,16 @@ def plot_differential_histogram(df, output_dir, slope, label="", dpi=200):
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-    for ax, col, xlabel, ylabel, title, q in (
+    for ax, col, ylabel, xlabel, title, q in (
         (axes[0], "mass_earth", "Mass (Earth masses)", "dN/dm", "Mass spectrum", mass_slope),
         (axes[1], "radius_km", "Radius (km)", "dN/dR", "Size spectrum", size_slope),
     ):
         centres, density, _ = _differential(df[col])
-        ax.plot(centres, density, drawstyle="steps-mid", label="sampled")
+        ax.plot(density, centres, marker="o", ms=3, label="sampled")
 
         # reference power law anchored to the first populated bin
         ref = density[0] * (centres / centres[0]) ** (-q)
-        ax.plot(centres, ref, "k--", lw=1, label=f"slope q = {q:.3g}")
+        ax.plot(ref, centres, "k--", lw=1, label=f"slope q = {q:.3g}")
 
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -140,3 +147,49 @@ def plot_differential_histogram(df, output_dir, slope, label="", dpi=200):
 
     return _save(fig, output_dir, "dohnanyi_differential_histogram.png",
                  dpi=dpi, footer=_footer_text(df))
+
+
+def _log_bins(values, n_bins=25):
+    """Log-spaced bin edges spanning the sampled values."""
+    values = np.asarray(values, dtype=float)
+    return np.logspace(np.log10(values.min()), np.log10(values.max()), n_bins + 1)
+
+
+def plot_count_histograms(df, output_dir, label="", dpi=200, n_bins=25):
+    """
+    Two plain count histograms with the sampled variable on the x-axis and the
+    raw number of planetesimals per bin on the y-axis:
+
+      * count_vs_mass_histogram.png    -- count vs mass (Earth masses)
+      * count_vs_radius_histogram.png  -- count vs radius (km)
+
+    Bins are log-spaced (the x-axis is logarithmic); bar heights are linear
+    counts.
+    """
+    specs = (
+        ("mass_earth", "Mass (Earth masses)", "Planetesimal count vs mass",
+         "count_vs_mass_histogram.png", "C0"),
+        ("radius_km", "Radius (km)", "Planetesimal count vs radius",
+         "count_vs_radius_histogram.png", "C1"),
+    )
+
+    paths = []
+    for col, xlabel, title, filename, color in specs:
+        values = df[col].to_numpy()
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.hist(
+            values, bins=_log_bins(values, n_bins),
+            color=color, edgecolor="black", linewidth=0.5,
+        )
+        ax.set_xscale("log")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("Number of planetesimals")
+        ax.set_title(f"{label}\n{title}" if label else title)
+        ax.grid(alpha=0.3, which="both")
+        fig.tight_layout()
+
+        paths.append(_save(fig, output_dir, filename, dpi=dpi,
+                           footer=_footer_text(df)))
+
+    return paths

@@ -1,0 +1,16 @@
+[Unit]
+Description=Debris disk simulation: %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/elaine/debris-disk-pipeline
+ExecStart=/home/elaine/miniconda3/envs/debris_pipeline/bin/python -u src/simulation/run_simulation.py config/%i.yaml
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target

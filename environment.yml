@@ -1,0 +1,21 @@
+# Conda environment for the debris-disk-pipeline, used both locally and as
+# the spec `scripts/remote/bootstrap_env.sh` builds from on a cluster.
+#
+# Deliberately loose (no platform-specific build strings) so it solves across
+# OS/arch. Regenerate a fully pinned version locally with:
+#   conda env export -n debris_pipeline --no-builds > environment.yml
+# if you need exact reproducibility instead of portability.
+name: debris_pipeline
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - rebound==5.0.0
+      - numpy==2.4.6
+      - pandas==3.0.3
+      - scipy==1.17.1
+      - matplotlib==3.10.9
+      - PyYAML==6.0.3
+      - pytest

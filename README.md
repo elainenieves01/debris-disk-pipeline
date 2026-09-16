@@ -69,6 +69,129 @@ python src/simulation/run_simulation.py config/SS_1000MP_100Myr_.yaml
 # detach with Ctrl-b d ; reattach later with: tmux attach -t ss_run
 ```
 
+`src/launch/launch_simulation.py` (below) does this `tmux new` step for you
+automatically, so it's usually easier to use that instead of the manual
+sequence above.
+
+### Local vs. remote: `launch_simulation.py`
+
+```bash
+python src/launch/launch_simulation.py config/<your_config>.yaml
+```
+
+This is a thin wrapper around `run_simulation.py` that always starts the run
+inside a detached tmux session — locally or, if the config asks for it, on a
+named remote machine over SSH (a university cluster, a work computer, or any
+other host you define) — so you never have to remember the manual
+`tmux new -s ...` step. The plain direct invocation
+(`python src/simulation/run_simulation.py config.yaml`) still works exactly as
+before for a foreground local run; `launch_simulation.py` is additive.
+
+Add an optional top-level `compute:` section to choose the target (default is
+`local` if the section is omitted). Define as many named remotes as you have
+machines — e.g. a work computer and a cluster — and pick one per run by
+setting `compute.target` to its name:
+
+```yaml
+compute:
+  target: local          # "local" (default) | any key under remotes
+  tmux_session: null     # optional; default = sanitized simulation.name
+
+  remotes:
+    cluster:
+      host: "login.cluster.university.edu"
+      username: "myusername"
+      remote_dir: "~/debris-disk-pipeline"
+      conda_env: "debris_pipeline"
+      environment_file: "environment.yml"   # relative to repo root
+      ssh_opts: []                    # e.g. ["-p", "2222"]
+      rsync_excludes: []              # appended to the built-in excludes
+    work_computer:
+      host: "work-pc.tailnet-name.ts.net"   # whatever your VPN/Tailscale gives it
+      username: "myusername"
+      remote_dir: "~/debris-disk-pipeline"
+      conda_env: "debris_pipeline"
+```
+
+With `target: cluster` (or any other remote name), a launch:
+1. `rsync`s the repo to `remote_dir` on that machine (excluding `.git/`,
+   `outputs/`, `__pycache__/`, etc.).
+2. Idempotently creates the `conda_env` there from `environment.yml` if it
+   doesn't already exist — no manual setup needed ahead of time.
+3. Launches the run inside a detached tmux session on that machine and
+   prints a reattach command.
+
+SSH access is assumed to be password/interactive (or 2FA) rather than
+key-based: every `ssh`/`rsync` call runs in your real terminal, so you'll be
+prompted normally at each step. If you've set up SSH keys instead, it works
+the same way, just without the prompts. Reaching a machine that isn't on your
+current network (e.g. a work computer from your laptop) is a networking
+concern outside this code — a VPN or a mesh tool like Tailscale is the usual
+answer; `host` just needs to resolve once you're connected.
+
+Each launch step (mkdir, rsync, conda bootstrap, tmux launch) opens its own
+SSH connection today, so you may be prompted more than once per launch. If
+that's annoying, add SSH connection multiplexing to `~/.ssh/config` so the
+password/2FA is only needed once per session:
+
+```
+Host login.cluster.university.edu
+  ControlMaster auto
+  ControlPath ~/.ssh/sockets/%r@%h-%p
+  ControlPersist 10m
+```
+
+A launch failure (rsync, SSH, or the remote conda/tmux bootstrap) prints
+`LAUNCH FAILED: ...` naming the step that failed and exits non-zero — unlike
+notification failures below, this always surfaces loudly since nothing is
+running yet.
+
+If your university cluster turns out to be a shared HPC center rather than a
+personal/lab server, check its policy before using this: many shared clusters
+forbid running real computation directly on the login node (which is what
+this launcher does today via tmux) and expect jobs to go through a scheduler
+like Slurm or PBS instead — running against policy risks the job being
+killed by a resource monitor. Job-scheduler submission support can be added
+here later if your cluster requires it.
+
+### Surviving a crash or power outage
+
+With `simulation.dump: true` (set in every current config), the run writes a
+resume checkpoint (`outputs/<name>/dump_data.json`) at every output step and
+appends each step to the run's SimulationArchive (`outputs/<name>/<name>.bin`).
+Relaunching the same config after an interruption detects the checkpoint and
+resumes from the last completed output step instead of starting over
+(`build_simulation`/`run_simulation` in `src/simulation/run_simulation.py`).
+The checkpoint write itself is atomic (write-to-temp, then rename) — a crash
+mid-write can never leave a corrupt checkpoint behind.
+
+That covers *resuming*, but not *restarting the process itself* after real
+power loss — nothing brings the job back up on its own by default, and tmux
+(being an in-memory server) doesn't survive a reboot either. For a run you
+want to survive that, install the provided systemd user service template so
+it's supervised and comes back automatically:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/debris-sim@.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+loginctl enable-linger "$USER"   # let user services start at boot without a login
+```
+
+Then, for each config you want auto-restarted (use the config's filename
+without `.yaml`):
+
+```bash
+systemctl --user enable --now debris-sim@<config_name>.service   # starts it now too
+# or, for a run already going in tmux (avoid a duplicate process):
+systemctl --user enable debris-sim@<config_name>.service         # enable only; it'll
+                                                                   # take over on the next boot
+```
+
+`Restart=on-failure` means it only restarts on an actual crash/reboot, never
+after a clean successful finish. Follow live output with
+`journalctl --user -u debris-sim@<config_name>.service -f`.
+
 ### Completion / failure notifications
 
 `run_simulation.py` can POST a status line to an [ntfy.sh](https://ntfy.sh)
@@ -180,3 +303,39 @@ python src/mass_models/plot_slope_sweep.py
 
 Writes `src/mass_models/radius_distribution_slope_sweep{,_grid}.png` plus one
 standalone figure per slope (`radius_distribution_slope_q<q>.png`).
+
+Flags override the defaults: `--n`, `--radius-min` / `--radius-max`,
+`--slope-min` / `--slope-max` / `--slope-step`, `--seed`, and `--outdir` to write
+somewhere other than the source tree. Add `--per-slope` to also emit
+`<outdir>/slope_q<q>/distribution.csv` and the per-particle / differential /
+count-histogram figures for every slope:
+
+```bash
+python src/mass_models/plot_slope_sweep.py \
+    --n 500 --radius-max 200 \
+    --outdir src/mass_models/radius_slope_sweep_200km_500N --per-slope
+```
+
+### Cascade selection
+
+The largest bodies of a finite power-law draw scatter away from `N(≥R)` (few
+bodies → large Poisson noise), so simply taking "the N largest" inherits that
+noisy tail. `src/mass_models/make_cascade_selection.py` instead samples a big
+cascade (`--n-cascade`, drawn in chunks so it scales past memory), compares the
+sampled `N(≥R)` to the analytic power law, drops every small-count rank that
+deviates by more than `--tol` (fractional), and keeps the contiguous block of
+`--n-keep` bodies just below the deepest deviation — the largest bodies that
+still trace `dN/dR ∝ R^-q`. A larger cascade pushes that block closer to
+`--radius-max`.
+
+```bash
+python src/mass_models/make_cascade_selection.py \
+    --n-cascade 5_000_000 --n-keep 800 --radius-max 200 \
+    --outdir src/mass_models/cascade_selection_200km_800keep
+```
+
+Per slope: `slope_q<q>/selected.csv` and the per-particle / differential /
+count-histogram figures for the kept sample (`--save-cascade` also dumps the
+retained top ranks). Spanning all slopes: `residual_diagnostic_grid.png`
+(sampled/analytic vs rank, cut marked), `selection_cumulative_grid.png`
+(dropped tail / kept block / analytic), and `selection_summary.csv`.
