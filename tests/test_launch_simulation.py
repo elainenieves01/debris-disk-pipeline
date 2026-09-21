@@ -21,7 +21,16 @@ def test_sanitize_session_name_replaces_bad_chars():
 
 
 def test_sanitize_session_name_leaves_safe_chars():
-    assert sanitize_session_name("run-1.0_ok") == "run-1.0_ok"
+    assert sanitize_session_name("run-1_0_ok") == "run-1_0_ok"
+
+
+def test_sanitize_session_name_strips_dots():
+    # Regression: tmux itself silently mangles literal dots in session names
+    # it creates (e.g. "slopeq2.5" -> "slopeq2_5" on the actual server), so
+    # our sanitizer must strip dots too or computed/reattach names drift
+    # from the real live session name.
+    assert sanitize_session_name("SS_800MP_100Myr_slopeq2.5") == "SS_800MP_100Myr_slopeq2_5"
+    assert sanitize_session_name("run-1.0_ok") == "run-1_0_ok"
 
 
 def test_session_name_for_defaults_to_simulation_name():
