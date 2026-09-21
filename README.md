@@ -339,3 +339,30 @@ count-histogram figures for the kept sample (`--save-cascade` also dumps the
 retained top ranks). Spanning all slopes: `residual_diagnostic_grid.png`
 (sampled/analytic vs rank, cut marked), `selection_cumulative_grid.png`
 (dropped tail / kept block / analytic), and `selection_summary.csv`.
+
+### Feeding a cascade selection into a simulation
+
+`massive_planetesimals.distribution.mode: csv` loads a `selected.csv`-style
+file (from `make_cascade_selection.py`, or anything matching its
+`radius_km, mass_kg, mass_earth, mass_solar` schema) as the N planetesimal
+radii/masses directly, instead of drawing a fresh power law inside
+`run_simulation.py`. Row count must equal `massive_planetesimals.N`; no
+sibling mass key (`total_disk_mass_earth`, etc.) may be set, since the disk
+mass falls out of the file. `slope` is optional and used only for labeling
+in the console output and diagnostics plots.
+
+```yaml
+massive_planetesimals:
+  N: 800
+  distribution:
+    type: power_law
+    mode: csv
+    variable: radius
+    unit: km
+    path: src/mass_models/cascade_selection_200km_800keep/slope_q3/selected.csv
+    slope: 3.0   # optional, labeling only
+```
+
+`path` may be absolute or relative to the repo root. This is the intended
+next step after "Cascade selection" above: sample+select once per slope,
+then point one config per slope at its `selected.csv`.

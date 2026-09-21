@@ -37,6 +37,15 @@ def _format_mass_assignment_config(config):
     dist = mp_config.get("distribution")
     if dist is not None:
         dist_mode = str(dist.get("mode", "total_mass")).lower()
+
+        if dist_mode == "csv":
+            return (
+                f"loaded from CSV (mode=csv): variable={dist.get('variable')}, "
+                f"path={dist.get('path')}, slope={dist.get('slope')} "
+                "(radii/masses read verbatim from file; disk mass computed from file, "
+                "not split by a power law)"
+            )
+
         common = (
             f"power_law distribution (mode={dist_mode}): "
             f"variable={dist.get('variable')}, "

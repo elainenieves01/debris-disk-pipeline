@@ -171,7 +171,7 @@ def choose_timestep(sim, config, has_giant_planet, Mstar, a_ref):
 #   "size_range"  - [min, max] are literal physical limits; each mass follows
 #                   from radius + density and the disk mass is whatever the N
 #                   bodies sum to. (No sibling mass key.)
-DISTRIBUTION_MODES = ("total_mass", "size_range")
+DISTRIBUTION_MODES = ("total_mass", "size_range", "csv")
 
 
 def _sample_mp_distribution(dist_cfg, npl, config, total_disk_mass_earth=None):
@@ -219,6 +219,73 @@ def _sample_mp_distribution(dist_cfg, npl, config, total_disk_mass_earth=None):
         ),
         seed=int(seed),
     )
+
+
+def _load_mp_distribution_csv(dist_cfg, npl):
+    """Load a pre-selected planetesimal radius list (e.g. from
+    ``make_cascade_selection.py``) instead of sampling a fresh power law.
+
+    Expects a CSV with columns ``radius_km, mass_kg, mass_earth, mass_solar``
+    (the ``selected.csv`` format written by the cascade-selection tool) and
+    exactly ``npl`` rows. Returns a DataFrame shaped like
+    ``generate_distribution``'s output, with matching ``.attrs``, so the rest
+    of the pipeline (diagnostics, printing) doesn't need to know the masses
+    came from a file rather than a fresh draw.
+    """
+    path = dist_cfg.get("path")
+    if not path:
+        raise ValueError(
+            "massive_planetesimals.distribution.mode='csv' requires a 'path' "
+            "key pointing at a selected.csv-style file."
+        )
+
+    csv_path = Path(path)
+    if not csv_path.is_absolute():
+        # Resolve relative to the repo root (run_simulation.py is invoked
+        # from there per the README), not the current working directory.
+        csv_path = Path(__file__).resolve().parents[2] / csv_path
+
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"massive_planetesimals.distribution: csv path not found: {csv_path}"
+        )
+
+    df = pd.read_csv(csv_path)
+    required_cols = {"radius_km", "mass_kg", "mass_earth", "mass_solar"}
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"massive_planetesimals.distribution csv '{csv_path}' is missing "
+            f"required column(s): {sorted(missing)}"
+        )
+
+    if len(df) != npl:
+        raise ValueError(
+            f"massive_planetesimals.distribution csv '{csv_path}' has "
+            f"{len(df)} rows but massive_planetesimals.N={npl}; they must match."
+        )
+
+    if "particle_id" not in df.columns:
+        df = df.copy()
+        df.insert(0, "particle_id", np.arange(len(df)))
+
+    df = df[["particle_id", "radius_km", "mass_kg", "mass_earth", "mass_solar"]].reset_index(drop=True)
+
+    df.attrs.update({
+        "n_particles": int(len(df)),
+        "distribution_variable": str(dist_cfg.get("variable", "radius")).lower(),
+        "slope": (
+            float(dist_cfg["slope"]) if dist_cfg.get("slope") is not None else None
+        ),
+        "value_min": float(df["radius_km"].min()),
+        "value_max": float(df["radius_km"].max()),
+        "mass_unit": "earth",
+        "density_g_cm3": 1.0,
+        "total_disk_mass_earth": None,
+        "seed": None,
+        "source_csv": str(csv_path),
+    })
+    return df
 
 
 def _write_distribution_diagnostics(dist_df, dist_cfg, config):
@@ -385,8 +452,9 @@ def build_simulation(config):
     # "total_disk_mass_earth".
     # "massive_planetesimals" used to be referred to as dwarf_planets.
     #
-    # An optional "distribution" block draws the N masses from a power law.
-    # It has two named modes (distribution.mode):
+    # An optional "distribution" block draws the N masses from a power law
+    # (or loads a pre-sampled list from a file). It has three named modes
+    # (distribution.mode):
     #
     #   mode: total_mass   (default)  - needs the sibling total_disk_mass_earth;
     #       the sampled masses are rescaled to sum to it. slope and the
@@ -395,15 +463,29 @@ def build_simulation(config):
     #   mode: size_range              - no sibling mass key; [min, max] are used
     #       literally and the disk mass is whatever the N bodies sum to.
     #
+    #   mode: csv                     - no sibling mass key; radii come from a
+    #       selected.csv-style file (e.g. from make_cascade_selection.py)
+    #       instead of a fresh power-law draw. Row count must equal N; the
+    #       disk mass is whatever the file's bodies sum to. "slope" is
+    #       optional and only used for labeling/diagnostics.
+    #
     #   distribution:
     #     type: power_law
-    #     mode: size_range        # total_mass | size_range
+    #     mode: size_range        # total_mass | size_range | csv
     #     variable: radius        # radius | mass
     #     min: 1
     #     max: 100
     #     unit: km                # km for radius, earth_mass for mass
     #     slope: 3.5              # dN/dvariable ~ variable^-slope
     #     seed: 42                # optional
+    #
+    #   distribution:             # mode: csv example
+    #     type: power_law
+    #     mode: csv
+    #     variable: radius
+    #     unit: km
+    #     path: src/mass_models/cascade_selection_200km_800keep/slope_q3/selected.csv
+    #     slope: 3.0               # optional, for labeling only
 
     if npl > 0:
         mp_cfg = config["massive_planetesimals"]
@@ -453,6 +535,21 @@ def build_simulation(config):
             mode = "distribution/size_range"
             mode_note = "power-law size range given; disk mass computed from N bodies"
             dist_df = _sample_mp_distribution(dist_cfg, npl, config)
+            mp_masses = dist_df["mass_solar"].to_numpy()
+            m_mps = float(np.median(mp_masses))
+
+        elif dist_mode == "csv":
+            # Pre-selected radii from make_cascade_selection.py (or any file
+            # matching its selected.csv schema); the disk mass is an output,
+            # so no MASS_KEYS should be set (same contract as size_range).
+            if present:
+                raise ValueError(
+                    "massive_planetesimals.distribution.mode='csv' computes "
+                    f"the disk mass from the loaded sizes; remove {present}."
+                )
+            mode = "distribution/csv"
+            mode_note = "planetesimal radii loaded from CSV; disk mass computed from file"
+            dist_df = _load_mp_distribution_csv(dist_cfg, npl)
             mp_masses = dist_df["mass_solar"].to_numpy()
             m_mps = float(np.median(mp_masses))
 
@@ -514,8 +611,16 @@ def build_simulation(config):
             masses_earth = dist_df["mass_earth"].to_numpy()
             radius_km = dist_df["radius_km"].to_numpy()
             diam_km = 2.0 * radius_km
-            dyn_range = float(dist_cfg["max"]) / float(dist_cfg["min"])
-            if dist_mode == "size_range":
+            if dist_mode == "csv":
+                slope_val = dist_df.attrs.get("slope")
+                slope_label = f"slope={slope_val:g}" if slope_val is not None else "slope=n/a"
+                print(
+                    f"  Mass spectrum: loaded from CSV "
+                    f"({dist_df.attrs.get('source_csv')}), {slope_label}, "
+                    f"realized radius range "
+                    f"[{radius_km.min():.3f}, {radius_km.max():.3f}] km"
+                )
+            elif dist_mode == "size_range":
                 print(
                     f"  Mass spectrum: power_law in {dist_cfg['variable']}, "
                     f"slope={float(dist_cfg['slope']):g}, "
@@ -523,6 +628,7 @@ def build_simulation(config):
                     f"(literal limits), seed={dist_df.attrs.get('seed')}"
                 )
             else:
+                dyn_range = float(dist_cfg["max"]) / float(dist_cfg["min"])
                 print(
                     f"  Mass spectrum: power_law in {dist_cfg['variable']}, "
                     f"slope={float(dist_cfg['slope']):g}, "

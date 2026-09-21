@@ -1,0 +1,88 @@
+# Auto-generated from SS_800MP_100Myr_.yaml: 800-body radius-slope
+# sweep, slope q=4, fed from the cascade-selection tool's
+# selected.csv (src/mass_models/cascade_selection_200km_800keep/slope_q4/).
+# See README.md "Feeding a cascade selection into a simulation".
+# compute.target: barbieri dispatches this to the shared lab machine over
+# SSH (rsync + conda bootstrap + tmux), since a full 100 Myr run takes on
+# the order of 2+ weeks locally. See README.md "Local vs. remote".
+
+disk:
+  amax: 105
+  amin: 95
+  emax: 3.2e-05
+  emin: 0.0
+  imax_deg: 3.2e-05
+  imin_deg: 0.0
+giant_planet: null
+integration:
+  exit_max_distance: 1000.0
+  integrator: mercurius
+  maxtime: 100000000
+  time_step: 10000
+  timestep_fraction_of_planet_period: 0.1
+massive_planetesimals:
+  N: 800
+  distribution:
+    type: power_law
+    mode: csv
+    variable: radius
+    unit: km
+    path: src/mass_models/cascade_selection_200km_800keep/slope_q4/selected.csv
+    slope: 4.0
+notify:
+  enabled: false
+  ntfy_topic: https://ntfy.sh/elaine-hd216435-run
+plots:
+  dpi: 200
+  enabled: true
+  final_conditions:
+    output_file: outputs/FinalConditions.png
+  limits:
+    a_evolution:
+      xlim: null
+      ylim: null
+    ae:
+      xlim: null
+      ylim: null
+    ai:
+      xlim: null
+      ylim: null
+    e_evolution:
+      xlim: null
+      ylim: null
+    i_evolution:
+      xlim: null
+      ylim: null
+    mode: auto
+    survival:
+      xlim: null
+      ylim: null
+  scale:
+    x: linear
+    y: linear
+simulation:
+  dump: true
+  name: SS_800MP_100Myr_slopeq4
+  output_dir: outputs
+  random_seed: 0
+star:
+  mass: 1.0
+test_particles:
+  N: 0
+  distribution: uniform
+units:
+  length: AU
+  mass: Msun
+  time: yr
+compute:
+  target: barbieri
+  tmux_session: null
+  remotes:
+    barbieri:
+      host: 10.16.39.111
+      username: elaine.nieves
+      remote_dir: /hadoop_data/home/elaine.nieves/debris-disk-pipeline
+      conda_env: debris_pipeline
+      environment_file: environment.yml
+      ssh_opts: []
+      rsync_excludes: []

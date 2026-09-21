@@ -12,7 +12,7 @@ for _sub in ("config_io", "plotting", "diagnostics", "utilities", "mass_models",
     sys.path.insert(0, os.path.join(_SRC, _sub))
 
 from run_simulation import build_simulation, EARTH_MASS_TO_SOLAR_MASS  # noqa: E402
-from mass_models import masses_to_radii, M_SUN_KG  # noqa: E402
+from mass_models import masses_to_radii, radii_to_masses, M_SUN_KG, M_EARTH_KG  # noqa: E402
 
 
 BASE_CONFIG = {
@@ -137,3 +137,69 @@ def test_distribution_rejects_unknown_mode():
         build_simulation(_config(
             distribution={"type": "power_law", "mode": "bogus", "variable": "radius",
                           "min": 1, "max": 100, "unit": "km", "slope": 3.5}))
+
+
+def _csv_config(csv_path, n=5, slope=None):
+    cfg = copy.deepcopy(BASE_CONFIG)
+    dist = {"type": "power_law", "mode": "csv", "variable": "radius",
+            "unit": "km", "path": str(csv_path)}
+    if slope is not None:
+        dist["slope"] = slope
+    cfg["massive_planetesimals"] = {"N": n, "distribution": dist}
+    return cfg
+
+
+def _write_selected_csv(path, radii_km, density_g_cm3=1.0):
+    import pandas as pd
+    radii_km = np.asarray(radii_km, dtype=float)
+    masses_kg = radii_to_masses(radii_km, density_g_cm3=density_g_cm3)
+    df = pd.DataFrame({
+        "particle_id": np.arange(len(radii_km)),
+        "radius_km": radii_km,
+        "mass_kg": masses_kg,
+        "mass_earth": masses_kg / M_EARTH_KG,
+        "mass_solar": masses_kg / M_SUN_KG,
+    })
+    df.to_csv(path, index=False)
+
+
+def test_csv_mode_loads_radii_from_file(tmp_path):
+    csv_path = tmp_path / "selected.csv"
+    radii = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    _write_selected_csv(csv_path, radii)
+
+    sim = build_simulation(_csv_config(csv_path, n=5, slope=3.0))
+    masses_msun = _mp_masses(sim)
+    assert masses_msun.size == 5
+
+    radii_back_km = masses_to_radii(masses_msun * M_SUN_KG, density_g_cm3=1.0)
+    assert np.allclose(np.sort(radii_back_km), np.sort(radii), rtol=1e-6)
+
+
+def test_csv_mode_requires_row_count_to_match_n(tmp_path):
+    csv_path = tmp_path / "selected.csv"
+    _write_selected_csv(csv_path, np.array([10.0, 20.0, 30.0]))
+    with pytest.raises(ValueError):
+        build_simulation(_csv_config(csv_path, n=5))
+
+
+def test_csv_mode_rejects_a_mass_key(tmp_path):
+    csv_path = tmp_path / "selected.csv"
+    _write_selected_csv(csv_path, np.array([10.0, 20.0, 30.0]))
+    cfg = _csv_config(csv_path, n=3)
+    cfg["massive_planetesimals"]["total_disk_mass_earth"] = 0.5
+    with pytest.raises(ValueError):
+        build_simulation(cfg)
+
+
+def test_csv_mode_requires_path():
+    cfg = _csv_config("unused", n=3)
+    cfg["massive_planetesimals"]["distribution"].pop("path")
+    with pytest.raises(ValueError):
+        build_simulation(cfg)
+
+
+def test_csv_mode_missing_file_raises(tmp_path):
+    missing = tmp_path / "does_not_exist.csv"
+    with pytest.raises(FileNotFoundError):
+        build_simulation(_csv_config(missing, n=3))
