@@ -30,7 +30,7 @@ massive_planetesimals:
     path: src/mass_models/cascade_selection_200km_800keep/slope_q2.5/selected.csv
     slope: 2.5
 notify:
-  enabled: false
+  enabled: true
   ntfy_topic: https://ntfy.sh/elaine-hd216435-run
 plots:
   dpi: 200
