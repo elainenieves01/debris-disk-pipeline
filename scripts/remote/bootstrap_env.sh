@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Idempotent conda env bootstrap for the remote cluster side of the launcher.
-# Usage: bootstrap_env.sh <env_name> <environment_file>
+# Usage: bootstrap_env.sh <env_name> <environment_file> <remote_dir>
 set -euo pipefail
 
 ENV_NAME="$1"
 ENV_FILE="$2"
+REMOTE_DIR="$3"
+
+# ENV_FILE (e.g. "environment.yml") is relative to the repo, not to whatever
+# directory the SSH login happened to start in (usually $HOME) -- cd there
+# first, same as launch_tmux.sh does before running the simulation itself.
+cd "$REMOTE_DIR"
 
 source "$(conda info --base)/etc/profile.d/conda.sh"
 

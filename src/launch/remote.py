@@ -13,6 +13,7 @@ failed launch means nothing is running yet, so (unlike send_ntfy) this must
 never degrade silently.
 """
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -81,9 +82,18 @@ def build_bootstrap_cmd(remote_cfg):
     remote_dir = remote_cfg["remote_dir"].rstrip("/")
     remote_command = (
         f"{remote_dir}/scripts/remote/bootstrap_env.sh "
-        f"{remote_cfg['conda_env']} {remote_cfg['environment_file']}"
+        f"{remote_cfg['conda_env']} {remote_cfg['environment_file']} {remote_dir}"
     )
-    return [*_ssh_base(remote_cfg), "bash", "-lc", remote_command]
+    # ssh flattens all trailing argv elements into ONE space-joined string
+    # before handing it to the remote shell (it does not preserve local
+    # argv boundaries), which then re-splits that string on whitespace. So
+    # "bash", "-lc", remote_command as three separate local argv entries
+    # does NOT reliably give -lc `remote_command` as its single argument --
+    # the remote shell instead splits remote_command's own internal spaces
+    # into extra positional params, leaving bootstrap_env.sh invoked with no
+    # arguments at all ($1 unbound). shlex.quote keeps remote_command as one
+    # token across that round trip.
+    return [*_ssh_base(remote_cfg), "bash", "-lc", shlex.quote(remote_command)]
 
 
 def build_launch_cmd(remote_cfg, session, config_rel_path):
@@ -92,7 +102,10 @@ def build_launch_cmd(remote_cfg, session, config_rel_path):
         f"{remote_dir}/scripts/remote/launch_tmux.sh "
         f"{remote_cfg['conda_env']} {session} {remote_dir} '{config_rel_path}'"
     )
-    return [*_ssh_base(remote_cfg), "bash", "-lc", remote_command]
+    # See the comment in build_bootstrap_cmd: ssh re-joins argv with plain
+    # spaces before the remote shell re-parses it, so remote_command must be
+    # quoted as a single token or launch_tmux.sh ends up with no arguments.
+    return [*_ssh_base(remote_cfg), "bash", "-lc", shlex.quote(remote_command)]
 
 
 def _run_inherited(cmd, step_name):

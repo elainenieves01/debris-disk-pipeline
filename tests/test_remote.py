@@ -5,6 +5,7 @@ nothing cluster-specific leaked into the generic implementation."""
 
 import copy
 import os
+import shlex
 import sys
 from unittest.mock import patch, MagicMock
 
@@ -94,16 +95,66 @@ def test_build_rsync_cmd_appends_custom_excludes():
     assert "*.h5" in cmd
 
 
+def _reparsed_by_remote_shell(cmd):
+    """Simulate what actually happens to an argv list on the wire: ssh joins
+    every element after the host with a single space and hands that one
+    string to the remote's shell, which re-splits it from scratch (this is
+    what let the original $1-unbound bug through -- asserting on the local
+    argv list alone never exercises this round trip). Returns the argv the
+    remote command ultimately sees, via the same word-splitting rules
+    (shlex, POSIX mode) the remote shell applies."""
+    host_idx = 1  # cmd[0] == "ssh"; cmd[1] == user@host (ssh_opts, if any, sit
+    # between them, but tests here don't use ssh_opts)
+    joined = " ".join(cmd[host_idx + 1:])
+    return shlex.split(joined)
+
+
 def test_build_bootstrap_cmd():
     cmd = remote.build_bootstrap_cmd(_remote_cfg("cluster"))
     assert cmd[:2] == ["ssh", "myusername@login.cluster.university.edu"]
     assert cmd[2:4] == ["bash", "-lc"]
-    assert "bootstrap_env.sh debris_pipeline environment.yml" in cmd[4]
+    assert (
+        "bootstrap_env.sh debris_pipeline environment.yml ~/debris-disk-pipeline"
+        in cmd[4]
+    )
+
+    # Regression test for the real bug: after ssh's space-join + the remote
+    # shell's re-split, bootstrap_env.sh must still receive exactly its three
+    # positional arguments -- not zero (which is what "bash", "-lc",
+    # unquoted_remote_command produced: bootstrap_env.sh ran with $1 unbound).
+    # The third argument (remote_dir) matters in its own right too: without
+    # it bootstrap_env.sh has no way to cd into the repo before resolving
+    # environment.yml, which is relative to the repo, not to wherever the
+    # SSH login happens to start (see the "EnvironmentFileNotFound" bug this
+    # covers -- bootstrap_env.sh looking for environment.yml in $HOME).
+    remote_argv = _reparsed_by_remote_shell(cmd)
+    assert remote_argv[:2] == ["bash", "-lc"]
+    script_and_args = shlex.split(remote_argv[2])
+    assert script_and_args[-3:] == [
+        "debris_pipeline", "environment.yml", "~/debris-disk-pipeline",
+    ]
+    assert script_and_args[0].endswith("bootstrap_env.sh")
 
 
 def test_build_launch_cmd():
     cmd = remote.build_launch_cmd(_remote_cfg("cluster"), "sess1", "config/run.yaml")
-    assert "launch_tmux.sh debris_pipeline sess1 ~/debris-disk-pipeline 'config/run.yaml'" in cmd[4]
+    assert cmd[2:4] == ["bash", "-lc"]
+    # cmd[4] is shlex-quoted as one token (see build_launch_cmd's comment);
+    # undoing just that one layer should hand back the original, unquoted
+    # remote_command string verbatim.
+    assert shlex.split(cmd[4]) == [
+        "~/debris-disk-pipeline/scripts/remote/launch_tmux.sh debris_pipeline "
+        "sess1 ~/debris-disk-pipeline 'config/run.yaml'"
+    ]
+
+    # The real regression check: launch_tmux.sh must actually receive its
+    # four positional arguments after ssh's join + the remote shell's parse.
+    remote_argv = _reparsed_by_remote_shell(cmd)
+    script_and_args = shlex.split(remote_argv[2])
+    assert script_and_args[0].endswith("launch_tmux.sh")
+    assert script_and_args[1:] == [
+        "debris_pipeline", "sess1", "~/debris-disk-pipeline", "config/run.yaml",
+    ]
 
 
 def test_ssh_opts_extend_ssh_base():
