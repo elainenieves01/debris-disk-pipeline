@@ -1,0 +1,31 @@
+run_name: Sim_1000MP_100thouyr_dohnanyi
+run_uuid: a051955b-cea7-4987-ab5e-601a7aaab68e
+created: '2026-09-01T15:54:20-04:00'
+command: src/simulation/run_simulation.py config/Sim_1000MP_100thouyr_dohnanyi.yaml
+config:
+  source_path: config/Sim_1000MP_100thouyr_dohnanyi.yaml
+  frozen_copy: config.yaml
+git:
+  available: true
+  commit: 11237f126d1246bf36de360fd289542c0aeb86f8
+  short: 11237f1
+  branch: main
+  describe: 11237f1-dirty
+  dirty: true
+  dirty_files:
+  - config/Sim_1000MP_100thouyr_dohnanyi.yaml
+software:
+  python: 3.12.11
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: Elaines-MacBook-Pro.local
+  platform: macOS-10.16-x86_64-i386-64bit
+finished: '2026-09-02T22:55:20-04:00'
+wall_runtime_seconds: 111656.2
+outcome: completed
+initial_particle_count: 1001
+final_particle_count: 1001

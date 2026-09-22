@@ -1,0 +1,32 @@
+run_name: Test2
+run_uuid: 9bca557e-3e69-48c3-a0ed-2f339a0523eb
+created: '2026-09-01T14:44:43-04:00'
+command: src/simulation/run_simulation.py config/Test.yaml
+config:
+  source_path: config/Test.yaml
+  frozen_copy: config.yaml
+git:
+  available: true
+  commit: 914ec2185167e5af7011f3a4bf30e009e4cb1374
+  short: 914ec21
+  branch: main
+  describe: 914ec21-dirty
+  dirty: true
+  dirty_files:
+  - src/diagnostics/report.py
+  - src/simulation/run_simulation.py
+software:
+  python: 3.12.11
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: Elaines-MacBook-Pro.local
+  platform: macOS-10.16-x86_64-i386-64bit
+finished: '2026-09-01T14:44:44-04:00'
+wall_runtime_seconds: 0.1
+outcome: completed
+initial_particle_count: 16
+final_particle_count: 16
