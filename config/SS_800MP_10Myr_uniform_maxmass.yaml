@@ -1,0 +1,82 @@
+# 800-body uniform-mass control run: every planetesimal gets the mass of the
+# single most massive body generated across the q=2.5/3.5/4.5, R in
+# [1,1000] km cascade selections (src/mass_models/cascade_selection_1000km_800keep/) --
+# radius_km=858.4849, mass_earth=4.436527e-04, from slope_q2.5/selected.csv
+# particle_id 0. total_disk_mass_earth below = that per-body mass * N=800.
+# Same disk location (amin/amax/e/i) and N as the three slope configs, so
+# only the mass model differs. See README.md "Planetesimal masses".
+
+disk:
+  amax: 105
+  amin: 95
+  emax: 3.2e-05
+  emin: 0.0
+  imax_deg: 3.2e-05
+  imin_deg: 0.0
+giant_planet: null
+integration:
+  exit_max_distance: 1000.0
+  integrator: mercurius
+  maxtime: 10000000
+  time_step: 10000
+  timestep_fraction_of_planet_period: 0.1
+massive_planetesimals:
+  N: 800
+  total_disk_mass_earth: 0.35492216
+notify:
+  enabled: true
+  ntfy_topic: https://ntfy.sh/elaine-hd216435-run
+plots:
+  dpi: 200
+  enabled: true
+  final_conditions:
+    output_file: outputs/FinalConditions.png
+  limits:
+    a_evolution:
+      xlim: null
+      ylim: null
+    ae:
+      xlim: null
+      ylim: null
+    ai:
+      xlim: null
+      ylim: null
+    e_evolution:
+      xlim: null
+      ylim: null
+    i_evolution:
+      xlim: null
+      ylim: null
+    mode: auto
+    survival:
+      xlim: null
+      ylim: null
+  scale:
+    x: linear
+    y: linear
+simulation:
+  dump: true
+  name: SS_800MP_10Myr_uniform_maxmass
+  output_dir: outputs
+  random_seed: 0
+star:
+  mass: 1.0
+test_particles:
+  N: 0
+  distribution: uniform
+units:
+  length: AU
+  mass: Msun
+  time: yr
+compute:
+  target: barbieri
+  tmux_session: null
+  remotes:
+    barbieri:
+      host: 10.16.39.111
+      username: elaine.nieves
+      remote_dir: /hadoop_data/home/elaine.nieves/debris-disk-pipeline
+      conda_env: debris_pipeline
+      environment_file: environment.yml
+      ssh_opts: []
+      rsync_excludes: []
