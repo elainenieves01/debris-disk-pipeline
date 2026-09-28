@@ -204,6 +204,8 @@ def plot_mean_semimajor_axis(df, output_dir, dpi=200):
 
     ax.set_xlabel("Time (yr)")
     ax.set_ylabel("Mean Semimajor Axis (AU)")
+    # Show absolute AU (e.g. 99.98) rather than an offset like "+1e2 / -0.02".
+    ax.ticklabel_format(axis="y", useOffset=False)
     ax.set_title("Mean Semimajor Axis vs Time")
     ax.legend()
     ax.grid(alpha=0.3)
