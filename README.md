@@ -91,6 +91,38 @@ no limits restores the defaults), and `--show` also opens a zoom/pan window.
 Runs made before the table was saved need their archive once:
 `--archive path/to/<name>.bin`.
 
+## Simulation log
+
+`simulation_log.csv` (repo root) has one row per simulation sent out, in
+launch order. It records:
+- when and where the run was sent (target machine, launching host, git commit and dirty flag)
+- run length, output interval and the actual integration timestep, with how it was chosen
+- disk limits (a, e, i), body counts, and total disk mass
+- the mass model (uniform or power law, with slope and source) and the per-body mass range
+- giant planet, and the outcome (status, finish time, runtime, final particle count)
+
+The timestep and disk mass are computed by building the run's initial
+conditions exactly as `run_simulation.py` does, so a `distribution: mode: csv`
+run's disk mass is the true sum of its file.
+
+`launch_simulation.py` adds a row automatically on every successful launch,
+local or remote. For everything else:
+
+```bash
+# a run started another way (systemd, scripts/run_*.sh, run_simulation.py directly)
+python src/launch/run_log.py add config/<file>.yaml --target barbieri --sent 2026-09-01T10:00
+
+# fill in outcome / finish time / runtime from outputs/<name>/run_metadata.yaml,
+# e.g. after copying a remote run's outputs back
+python src/launch/run_log.py refresh
+
+# log any run in outputs/ that isn't in the log yet
+python src/launch/run_log.py backfill
+
+# print the most recent rows
+python src/launch/run_log.py show --last 10
+```
+
 ## Running long simulations
 
 A process started from an interactive shell (including anything launched inside a

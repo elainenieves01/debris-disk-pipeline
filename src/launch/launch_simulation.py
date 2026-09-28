@@ -21,6 +21,7 @@ for _subdir in ("config_io", "launch"):
 from config_utils import read_config  # noqa: E402
 from tmux_utils import session_name_for  # noqa: E402
 import remote  # noqa: E402
+import run_log  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUN_SIMULATION_SCRIPT = REPO_ROOT / "src" / "simulation" / "run_simulation.py"
@@ -79,6 +80,9 @@ def dispatch(config, config_path):
         except remote.RemoteLaunchError as error:
             print(f"LAUNCH FAILED: {error}", file=sys.stderr)
             sys.exit(1)
+
+    # only reached when the launch succeeded (failures exit above)
+    run_log.record_launch(config, config_path, target)
 
 
 if __name__ == "__main__":

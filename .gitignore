@@ -20,6 +20,8 @@ config/generated/*
 *.csv
 # ...except the small first/last-snapshot table replot_orbits.py redraws from
 !outputs/*/figures/data/orbits_initial_final.csv
+# ...and the log of every simulation sent out (src/launch/run_log.py)
+!/simulation_log.csv
 
 # Per-run checkpoint artifact (dump: true). Now written to outputs/<name>/,
 # which is already ignored; this also catches the legacy repo-root location.
