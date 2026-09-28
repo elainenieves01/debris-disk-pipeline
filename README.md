@@ -318,10 +318,30 @@ python src/mass_models/plot_slope_sweep.py \
 
 ### Cascade selection
 
+`src/mass_models/make_cascade_selection.py` samples a big cascade
+(`--n-cascade`, drawn in chunks so it scales past memory) and keeps `--n-keep`
+of its bodies. Radii convert to masses with the size-dependent bulk density
+`rho(R) = [(R / 220 km)^-3 + 2.1^-3]^(-1/3)` g/cm^3 (porous small bodies,
+2.1 g/cm^3 plateau for large ones; `--density-model constant --density X`
+restores a single density). Each `selected.csv` records the per-body
+`density_g_cm3`. By default (`--selection drop_top`) it drops the `--n-drop`
+most massive bodies and keeps the next `--n-keep` (ranks 101..900 below):
+
+```bash
+python src/mass_models/make_cascade_selection.py \
+    --n-cascade 5_000_000 --n-drop 100 --n-keep 800 --radius-max 1000 \
+    --slope-min 2.5 --slope-max 4.5 --slope-step 1.0 \
+    --outdir src/mass_models/cascade_selection_1000km_drop100_800keep
+```
+
+`--total-mass-earth M` multiplies each slope's kept masses by one constant so
+they sum to `M` Earth masses (e.g. the `..._1Mearth` / `..._10Mearth` folders);
+the mass spectrum keeps its shape, `radius_km` / `density_g_cm3` stay as drawn,
+and `selection_summary.csv` records each slope's `mass_scale`.
+
 The largest bodies of a finite power-law draw scatter away from `N(≥R)` (few
-bodies → large Poisson noise), so simply taking "the N largest" inherits that
-noisy tail. `src/mass_models/make_cascade_selection.py` instead samples a big
-cascade (`--n-cascade`, drawn in chunks so it scales past memory), compares the
+bodies → large Poisson noise), so "the N largest" inherits that noisy tail.
+`--selection powerlaw` avoids it: it compares the
 sampled `N(≥R)` to the analytic power law, drops every small-count rank that
 deviates by more than `--tol` (fractional), and keeps the contiguous block of
 `--n-keep` bodies just below the deepest deviation — the largest bodies that
@@ -329,7 +349,7 @@ still trace `dN/dR ∝ R^-q`. A larger cascade pushes that block closer to
 `--radius-max`.
 
 ```bash
-python src/mass_models/make_cascade_selection.py \
+python src/mass_models/make_cascade_selection.py --selection powerlaw \
     --n-cascade 5_000_000 --n-keep 800 --radius-max 200 \
     --outdir src/mass_models/cascade_selection_200km_800keep
 ```

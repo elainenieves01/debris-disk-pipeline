@@ -33,6 +33,42 @@ DOHNANYI_SIZE_SLOPE = 3.5
 # Unit conversions
 # ============================================================
 
+DENSITY_R0_KM = 220.0
+DENSITY_MAX_G_CM3 = 2.1
+
+
+def size_dependent_density(radii_km, r0_km=DENSITY_R0_KM, rho_max_g_cm3=DENSITY_MAX_G_CM3):
+    """
+    Size-dependent bulk density, in g/cm^3.
+
+    rho(R) = [ (R / r0)^-3 + rho_max^-3 ]^(-1/3)
+
+    Porous small bodies (rho ~ R / r0) grading into a compact rho_max plateau
+    for R >> r0 * rho_max. Monotonically increasing in R, so ordering bodies by
+    radius also orders them by mass.
+
+    Parameters
+    ----------
+    radii_km : array-like
+        Particle radii in km.
+
+    r0_km : float
+        Radius scale of the porous branch, km.
+
+    rho_max_g_cm3 : float
+        Large-body density plateau, g/cm^3.
+
+    Returns
+    -------
+    density_g_cm3 : numpy.ndarray
+        Bulk density per particle, g/cm^3.
+    """
+
+    radii_km = np.asarray(radii_km, dtype=float)
+
+    return ((radii_km / r0_km) ** -3 + rho_max_g_cm3 ** -3) ** (-1.0 / 3.0)
+
+
 def radii_to_masses(radii_km, density_g_cm3=1.0):
     """
     Convert spherical particle radii to masses.
@@ -44,8 +80,9 @@ def radii_to_masses(radii_km, density_g_cm3=1.0):
     radii_km : array-like
         Particle radii in km.
 
-    density_g_cm3 : float
-        Bulk density in g/cm^3.
+    density_g_cm3 : float or array-like
+        Bulk density in g/cm^3, either one value for every particle or one
+        per particle (e.g. from ``size_dependent_density``).
 
     Returns
     -------

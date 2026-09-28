@@ -21,8 +21,11 @@ def _footer_text(df):
         f"N={a.get('n_particles', len(df))}",
         f"var={a.get('distribution_variable', '?')}",
         f"slope={a.get('slope', float('nan')):.4g}",
-        f"rho={a.get('density_g_cm3', float('nan')):.3g} g/cm^3",
     ]
+    if a.get("density_model") == "size_dependent":
+        parts.append("rho(R) size-dependent")
+    else:
+        parts.append(f"rho={a.get('density_g_cm3', float('nan')):.3g} g/cm^3")
     if a.get("total_disk_mass_earth") is not None:
         parts.append(f"M_disk={a['total_disk_mass_earth']:.4g} M_earth")
     if a.get("seed") is not None:

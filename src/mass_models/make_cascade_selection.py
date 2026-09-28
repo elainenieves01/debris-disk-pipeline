@@ -2,10 +2,16 @@
 make_cascade_selection.py
 
 Sample a large planetesimal size *cascade*  dN/dR ~ R^-q  on [radius_min,
-radius_max], then keep the ``--n-keep`` bodies that best *preserve* the power
-law.
+radius_max], then keep ``--n-keep`` of its bodies. Two ``--selection`` modes:
 
-Why: the largest bodies of any finite draw scatter away from the analytic
+``drop_top`` (default)
+  Drop the ``--n-drop`` most massive (largest) bodies of the cascade and keep
+  the next ``--n-keep``: ranks n_drop+1 .. n_drop+n_keep.
+
+``powerlaw``
+  Keep the ``--n-keep`` bodies that best *preserve* the power law, as follows.
+
+Why powerlaw: the largest bodies of any finite draw scatter away from the analytic
 N(>=R) -- there are only a handful of them, so Poisson noise on the count is
 large. If you just took "the N_keep largest" you would inherit that noisy tail.
 Instead we:
@@ -33,6 +39,11 @@ and, spanning all slopes:
 Example:
 
     python src/mass_models/make_cascade_selection.py \\
+        --n-cascade 5_000_000 --n-drop 100 --n-keep 800 --radius-max 1000 \\
+        --slope-min 2.5 --slope-max 4.5 --slope-step 1.0 \\
+        --outdir src/mass_models/cascade_selection_1000km_drop100_800keep
+
+    python src/mass_models/make_cascade_selection.py --selection powerlaw \\
         --n-cascade 5_000_000 --n-keep 800 --radius-max 200 \\
         --outdir src/mass_models/cascade_selection_200km_800keep
 """
@@ -61,6 +72,9 @@ from mass_models import (  # noqa: E402
     M_SUN_KG,
     radii_to_masses,
     sample_powerlaw,
+    size_dependent_density,
+    DENSITY_R0_KM,
+    DENSITY_MAX_G_CM3,
 )
 from plots import (  # noqa: E402
     plot_per_particle,
@@ -70,11 +84,16 @@ from plots import (  # noqa: E402
 
 DEFAULT_N_CASCADE = 5_000_000
 DEFAULT_N_KEEP = 800
+DEFAULT_N_DROP = 100
+SELECTION_MODES = ("drop_top", "powerlaw")
+DEFAULT_SELECTION = "drop_top"
 DEFAULT_RADIUS_MIN_KM = 1.0
 DEFAULT_RADIUS_MAX_KM = 200.0
 DEFAULT_SLOPE_MIN = 2.0
 DEFAULT_SLOPE_MAX = 5.0
 DEFAULT_SLOPE_STEP = 0.5
+DENSITY_MODELS = ("size_dependent", "constant")
+DEFAULT_DENSITY_MODEL = "size_dependent"
 DEFAULT_DENSITY_G_CM3 = 1.0
 DEFAULT_TOL = 0.2
 DEFAULT_SEED = 42
@@ -93,6 +112,16 @@ class Cfg:
     seed: int
     outdir: str
     save_cascade: bool
+    selection: str = DEFAULT_SELECTION
+    n_drop: int = DEFAULT_N_DROP
+    total_mass_earth: float = None
+    density_model: str = DEFAULT_DENSITY_MODEL
+
+    def densities(self, radii_km):
+        """Bulk density (g/cm^3) of each radius under ``density_model``."""
+        if self.density_model == "size_dependent":
+            return size_dependent_density(radii_km)
+        return np.full(np.shape(radii_km), float(self.density_g_cm3))
 
     @property
     def keep_top(self):
@@ -180,14 +209,38 @@ def find_cut_rank(cfg, radii_desc, slope):
     return k_start, ratio
 
 
+def select_start_rank(cfg, radii_desc, slope):
+    """Start rank (1-based) of the kept block for ``cfg.selection``, plus the
+    sampled / analytic ratio used by the diagnostic plots."""
+    if cfg.selection == "powerlaw":
+        return find_cut_rank(cfg, radii_desc, slope)
+    if radii_desc.size < cfg.n_drop + cfg.n_keep:
+        raise ValueError(
+            f"retained {radii_desc.size} ranks but need n_drop + n_keep = "
+            f"{cfg.n_drop + cfg.n_keep}; raise keep_top / n_cascade"
+        )
+    counts = np.arange(1, radii_desc.size + 1, dtype=float)
+    ratio = counts / analytic_cumulative(cfg, radii_desc, slope, cfg.n_cascade)
+    return cfg.n_drop + 1, ratio
+
+
 def build_kept_frame(cfg, radii_desc, slope, k_start, seed):
     """DataFrame for the kept block, matching generate_distribution's columns."""
     block = radii_desc[k_start - 1 : k_start - 1 + cfg.n_keep].copy()
-    mass_kg = radii_to_masses(block, density_g_cm3=cfg.density_g_cm3)
+    density = cfg.densities(block)
+    mass_kg = radii_to_masses(block, density_g_cm3=density)
+    # Optional rescale to a target disk mass: one constant factor on every
+    # mass, so the mass spectrum keeps its shape. radius_km / density_g_cm3
+    # stay as drawn and no longer satisfy m = 4/3 pi rho R^3 unless scale = 1.
+    mass_scale = 1.0
+    if cfg.total_mass_earth is not None:
+        mass_scale = cfg.total_mass_earth * M_EARTH_KG / mass_kg.sum()
+        mass_kg = mass_kg * mass_scale
     df = pd.DataFrame(
         {
             "particle_id": np.arange(cfg.n_keep),
             "radius_km": block,
+            "density_g_cm3": density,
             "mass_kg": mass_kg,
             "mass_earth": mass_kg / M_EARTH_KG,
             "mass_solar": mass_kg / M_SUN_KG,
@@ -197,14 +250,19 @@ def build_kept_frame(cfg, radii_desc, slope, k_start, seed):
         n_particles=cfg.n_keep,
         distribution_variable="radius",
         slope=float(slope),
-        density_g_cm3=cfg.density_g_cm3,
+        density_model=cfg.density_model,
+        density_g_cm3=(cfg.density_g_cm3 if cfg.density_model == "constant"
+                       else None),
         seed=seed,
-        total_disk_mass_earth=None,
+        total_disk_mass_earth=cfg.total_mass_earth,
+        mass_scale=mass_scale,
         n_cascade=cfg.n_cascade,
         rank_window=(k_start, k_start + cfg.n_keep - 1),
         radius_min=cfg.radius_min,
         radius_max=cfg.radius_max,
-        selection_tol=cfg.tol,
+        selection=cfg.selection,
+        selection_tol=cfg.tol if cfg.selection == "powerlaw" else None,
+        n_drop=cfg.n_drop if cfg.selection == "drop_top" else None,
     )
     return df
 
@@ -220,10 +278,16 @@ def _cmap_norm(cfg):
 
 
 def _footer(cfg):
+    sel = (f"tol={cfg.tol:g}" if cfg.selection == "powerlaw"
+           else f"top {cfg.n_drop} dropped")
+    if cfg.total_mass_earth is not None:
+        sel += f" · masses rescaled to M_disk={cfg.total_mass_earth:g} M_earth"
+    rho = ("rho(R) size-dependent" if cfg.density_model == "size_dependent"
+           else f"rho={cfg.density_g_cm3:g} g/cm^3")
     return (
         f"cascade N={cfg.n_cascade:g} · keep {cfg.n_keep} · dN/dR ~ R^-q · "
         f"R in [{cfg.radius_min:g}, {cfg.radius_max:g}] km · "
-        f"tol={cfg.tol:g} · seed={cfg.seed} (+ slope index)"
+        f"{sel} · {rho} · seed={cfg.seed} (+ slope index)"
     )
 
 
@@ -249,7 +313,8 @@ def plot_residual_grid(cfg, per_slope):
     for ax, rec in zip(axes, per_slope):
         slope, ratio, k_start = rec["slope"], rec["ratio"], rec["k_start"]
         ranks = np.arange(1, ratio.size + 1)
-        ax.axhspan(1 - cfg.tol, 1 + cfg.tol, color="0.85", zorder=0)
+        if cfg.selection == "powerlaw":
+            ax.axhspan(1 - cfg.tol, 1 + cfg.tol, color="0.85", zorder=0)
         ax.axhline(1.0, color="0.4", lw=0.8)
         ax.plot(ranks, ratio, lw=0, marker="o", ms=2, alpha=0.5,
                 color=cmap(norm(slope)))
@@ -293,8 +358,9 @@ def plot_selection_cumulative_grid(cfg, per_slope):
 
         lo = k_start
         hi = k_start + cfg.n_keep - 1
-        ax.plot(radii_desc[:lo - 1], counts[:lo - 1], lw=0, marker="o", ms=3,
-                alpha=0.55, color="tab:red", label="dropped tail")
+        if lo > 1:
+            ax.plot(radii_desc[:lo - 1], counts[:lo - 1], lw=0, marker="o",
+                    ms=3, alpha=0.55, color="tab:red", label="dropped tail")
         ax.plot(radii_desc[lo - 1:hi], counts[lo - 1:hi], lw=0, marker="o",
                 ms=3, alpha=0.6, color="tab:green", label="kept")
         ax.plot(radii_desc[hi:], counts[hi:], lw=0, marker="o", ms=2,
@@ -341,6 +407,14 @@ def parse_args(argv=None):
     )
     p.add_argument("--n-cascade", type=int, default=DEFAULT_N_CASCADE,
                    help=f"bodies in the full cascade (default: {DEFAULT_N_CASCADE:g})")
+    p.add_argument("--selection", choices=SELECTION_MODES, default=DEFAULT_SELECTION,
+                   help="'drop_top': drop the n_drop most massive bodies and keep "
+                        "the next n_keep; 'powerlaw': "
+                        "drop the deviant tail and keep the block that traces the "
+                        f"power law (default: {DEFAULT_SELECTION})")
+    p.add_argument("--n-drop", type=int, default=DEFAULT_N_DROP,
+                   help="--selection drop_top only: most massive bodies to drop "
+                        f"(default: {DEFAULT_N_DROP})")
     p.add_argument("--n-keep", type=int, default=DEFAULT_N_KEEP,
                    help=f"bodies to keep per slope (default: {DEFAULT_N_KEEP})")
     p.add_argument("--radius-min", type=float, default=DEFAULT_RADIUS_MIN_KM,
@@ -351,12 +425,24 @@ def parse_args(argv=None):
     p.add_argument("--slope-max", type=float, default=DEFAULT_SLOPE_MAX)
     p.add_argument("--slope-step", type=float, default=DEFAULT_SLOPE_STEP)
     p.add_argument("--tol", type=float, default=DEFAULT_TOL,
-                   help="max fractional deviation from the analytic power law "
-                        f"tolerated in the kept block (default: {DEFAULT_TOL:g})")
+                   help="--selection powerlaw only: max fractional deviation from "
+                        "the analytic power law tolerated in the kept block "
+                        f"(default: {DEFAULT_TOL:g})")
     p.add_argument("--seed", type=int, default=DEFAULT_SEED,
                    help=f"base seed; slope i uses seed+i (default: {DEFAULT_SEED})")
+    p.add_argument("--density-model", choices=DENSITY_MODELS,
+                   default=DEFAULT_DENSITY_MODEL,
+                   help="'size_dependent': rho(R) = [(R/"
+                        f"{DENSITY_R0_KM:g} km)^-3 + {DENSITY_MAX_G_CM3:g}^-3]^(-1/3) "
+                        "g/cm^3; 'constant': rho = --density "
+                        f"(default: {DEFAULT_DENSITY_MODEL})")
     p.add_argument("--density", type=float, default=DEFAULT_DENSITY_G_CM3,
-                   help=f"bulk density, g/cm^3 (default: {DEFAULT_DENSITY_G_CM3:g})")
+                   help="--density-model constant only: bulk density, g/cm^3 "
+                        f"(default: {DEFAULT_DENSITY_G_CM3:g})")
+    p.add_argument("--total-mass-earth", type=float, default=None,
+                   help="rescale every slope's kept masses by one constant so "
+                        "they sum to this disk mass, Earth masses (radii and "
+                        "densities stay as drawn; default: no rescale)")
     p.add_argument("--outdir", required=True, help="output directory")
     p.add_argument("--save-cascade", action="store_true",
                    help="also write the retained top ranks per slope (cascade_top.csv)")
@@ -377,6 +463,10 @@ def main(argv=None):
         seed=args.seed,
         outdir=args.outdir,
         save_cascade=args.save_cascade,
+        selection=args.selection,
+        n_drop=args.n_drop,
+        total_mass_earth=args.total_mass_earth,
+        density_model=args.density_model,
     )
     os.makedirs(cfg.outdir, exist_ok=True)
 
@@ -386,7 +476,7 @@ def main(argv=None):
         slope = float(slope)
         seed = cfg.seed + i
         radii_desc = sample_cascade_top(cfg, slope, seed)
-        k_start, ratio = find_cut_rank(cfg, radii_desc, slope)
+        k_start, ratio = select_start_rank(cfg, radii_desc, slope)
         kept = build_kept_frame(cfg, radii_desc, slope, k_start, seed)
 
         slope_dir = Path(cfg.outdir) / f"slope_q{slope:g}"
@@ -416,6 +506,8 @@ def main(argv=None):
             keep_r_max=float(kept["radius_km"].max()),
             cascade_r_max=float(radii_desc[0]),
             frac_of_cascade=cfg.n_keep / cfg.n_cascade,
+            total_mass_earth=float(kept["mass_earth"].sum()),
+            mass_scale=float(kept.attrs["mass_scale"]),
         ))
 
     plot_residual_grid(cfg, per_slope)

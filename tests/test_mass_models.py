@@ -17,6 +17,7 @@ from mass_models import (  # noqa: E402
     masses_to_radii,
     sample_powerlaw,
     generate_distribution,
+    size_dependent_density,
 )
 
 
@@ -24,6 +25,23 @@ def test_radius_mass_roundtrip():
     radii = np.array([1.0, 10.0, 123.4, 800.0])
     back = masses_to_radii(radii_to_masses(radii, density_g_cm3=1.5), density_g_cm3=1.5)
     assert np.allclose(back, radii, rtol=1e-12)
+
+
+def test_size_dependent_density_limits():
+    small, mid, large = size_dependent_density([1.0, 220.0, 1e5])
+    assert small == pytest.approx(1.0 / 220.0, rel=1e-6)   # porous: R / 220
+    assert mid == pytest.approx((1.0 + 2.1 ** -3) ** (-1.0 / 3.0))
+    assert large == pytest.approx(2.1, rel=1e-6)           # compact plateau
+    rho = size_dependent_density(np.logspace(0, 3, 50))
+    assert np.all(np.diff(rho) > 0)
+
+
+def test_radii_to_masses_per_particle_density():
+    radii = np.array([10.0, 500.0])
+    rho = size_dependent_density(radii)
+    masses = radii_to_masses(radii, density_g_cm3=rho)
+    for r, d, m in zip(radii, rho, masses):
+        assert m == pytest.approx(radii_to_masses(r, density_g_cm3=d))
 
 
 def test_sample_powerlaw_bounds():
