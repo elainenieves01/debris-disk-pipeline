@@ -81,6 +81,7 @@ from plots import (  # noqa: E402
     plot_differential_histogram,
     plot_count_histograms,
 )
+from reference_bodies import add_radius_references  # noqa: E402
 
 DEFAULT_N_CASCADE = 5_000_000
 DEFAULT_N_KEEP = 800
@@ -376,6 +377,7 @@ def plot_selection_cumulative_grid(cfg, per_slope):
         ax.set_yscale("log")
         ax.set_xlim(0.8 * r_lo, cfg.radius_max * 1.03)
         ax.set_ylim(0.7, 6 * hi)
+        add_radius_references(ax, axis="x", pad_factor=1.0, fontsize=5.5)
         ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
         ax.xaxis.set_minor_formatter(mticker.NullFormatter())
         ax.set_title(f"q = {slope:g}   keep {r_lo:.3g}–{r_hi:.3g} km", fontsize=10)

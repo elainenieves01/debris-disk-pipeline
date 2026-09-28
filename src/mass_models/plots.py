@@ -13,6 +13,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from reference_bodies import add_mass_references, add_radius_references
+
 
 def _footer_text(df):
     """One-line provenance-style footer built from df.attrs."""
@@ -66,6 +68,7 @@ def plot_per_particle(df, output_dir, label="", dpi=200):
 
     axes[0].scatter(ordered["mass_earth"], rank, s=12)
     axes[0].set_xscale("log")
+    add_mass_references(axes[0], axis="x")
     axes[0].set_xlabel("Mass (Earth masses)")
     axes[0].set_ylabel("Rank (most to least massive)")
     axes[0].set_title("Individual masses")
@@ -73,6 +76,7 @@ def plot_per_particle(df, output_dir, label="", dpi=200):
 
     axes[1].scatter(ordered["radius_km"], rank, s=12, color="C1")
     axes[1].set_xscale("log")
+    add_radius_references(axes[1], axis="x")
     axes[1].set_xlabel("Radius (km)")
     axes[1].set_ylabel("Rank (most to least massive)")
     axes[1].set_title("Individual radii")
@@ -106,8 +110,8 @@ def plot_differential_histogram(df, output_dir, slope, label="", dpi=200):
     Log-log differential distributions dN/dm and dN/dR with the input
     power-law slope overlaid.
 
-    Axes are transposed relative to the usual convention: the differential
-    density (dN/dm, dN/dR) is on the x-axis and mass / radius on the y-axis.
+    Mass / radius is on the x-axis and the differential density (dN/dm,
+    dN/dR) on the y-axis.
 
     The sampled variable follows dN/dx ~ x^-slope.  Under m ~ R^3 the other
     variable follows an equivalent slope: if mass is sampled with slope q,
@@ -123,19 +127,21 @@ def plot_differential_histogram(df, output_dir, slope, label="", dpi=200):
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-    for ax, col, ylabel, xlabel, title, q in (
+    for ax, col, xlabel, ylabel, title, q in (
         (axes[0], "mass_earth", "Mass (Earth masses)", "dN/dm", "Mass spectrum", mass_slope),
         (axes[1], "radius_km", "Radius (km)", "dN/dR", "Size spectrum", size_slope),
     ):
         centres, density, _ = _differential(df[col])
-        ax.plot(density, centres, marker="o", ms=3, label="sampled")
+        ax.plot(centres, density, marker="o", ms=3, label="sampled")
 
         # reference power law anchored to the first populated bin
         ref = density[0] * (centres / centres[0]) ** (-q)
-        ax.plot(ref, centres, "k--", lw=1, label=f"slope q = {q:.3g}")
+        ax.plot(centres, ref, "k--", lw=1, label=f"slope q = {q:.3g}")
 
         ax.set_xscale("log")
         ax.set_yscale("log")
+        add_refs = add_mass_references if col == "mass_earth" else add_radius_references
+        add_refs(ax, axis="x")
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(title)
@@ -186,6 +192,8 @@ def plot_count_histograms(df, output_dir, label="", dpi=200, n_bins=25):
             color=color, edgecolor="black", linewidth=0.5,
         )
         ax.set_xscale("log")
+        add_refs = add_mass_references if col == "mass_earth" else add_radius_references
+        add_refs(ax, axis="x")
         ax.set_xlabel(xlabel)
         ax.set_ylabel("Number of planetesimals")
         ax.set_title(f"{label}\n{title}" if label else title)

@@ -55,6 +55,7 @@ from plots import (  # noqa: E402
     plot_differential_histogram,
     plot_count_histograms,
 )
+from reference_bodies import add_radius_references  # noqa: E402
 
 # --- defaults (also the values baked into the committed figures) ----------
 DEFAULT_N = 1000
@@ -169,6 +170,7 @@ def plot_overlay(cfg, radii_by_slope):
     ax.set_yscale("log")
     ax.set_xlim(cfg.radius_min, cfg.radius_max)
     ax.set_ylim(0.8, cfg.n * 1.3)
+    add_radius_references(ax)
     ax.set_xlabel("Radius (km)")
     ax.set_ylabel(r"Number of planetesimals with radius $\geq R$")
     ax.set_title(
@@ -202,6 +204,7 @@ def plot_per_slope(cfg, radii_by_slope):
         ax.set_yscale("log")
         ax.set_xlim(cfg.radius_min, cfg.radius_max)
         ax.set_ylim(0.8, cfg.n * 1.3)
+        add_radius_references(ax)
         ax.set_xlabel("Radius (km)")
         ax.set_ylabel(r"Number of planetesimals with radius $\geq R$")
         ax.set_title(
@@ -240,6 +243,7 @@ def plot_grid(cfg, radii_by_slope):
         ax.set_yscale("log")
         ax.set_xlim(cfg.radius_min, cfg.radius_max)
         ax.set_ylim(0.8, cfg.n * 1.3)
+        add_radius_references(ax, fontsize=5.5)
         ax.set_title(f"q = {slope:g}", fontsize=10)
         ax.grid(alpha=0.3, which="both")
 

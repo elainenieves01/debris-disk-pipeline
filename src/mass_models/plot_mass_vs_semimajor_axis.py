@@ -30,6 +30,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from reference_bodies import add_mass_references
+
 SIM_SEED = 42  # hardcoded in run_simulation.build_simulation
 DRAWS_PER_BODY = 6  # a, e, inc, omega, Omega, M
 
@@ -94,6 +96,7 @@ def main(argv=None):
                edgecolor="k", zorder=5, label=f"global max source (q={q_max:g})")
 
     ax.set_yscale("log")
+    add_mass_references(ax)
     ax.set_xlabel("Semimajor axis (AU)")
     ax.set_ylabel("Mass (Earth masses)")
     ax.set_title(
