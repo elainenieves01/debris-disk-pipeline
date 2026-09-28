@@ -24,6 +24,9 @@ Commands, for runs that didn't go through the launcher:
     # (run after copying a remote run's outputs back)
     python src/launch/run_log.py refresh
 
+    # configs from the old debris-disk-pipeline-legacy repo, as unconfirmed runs
+    python src/launch/run_log.py legacy ~/debris-disk-pipeline-legacy
+
     # print the log
     python src/launch/run_log.py show --last 10
 
@@ -356,6 +359,110 @@ def backfill(outputs_dir, path=None):
 
 
 # ============================================================
+# Legacy pipeline (debris-disk-pipeline-legacy) configs
+# ============================================================
+#
+# The legacy repo kept no run records (outputs/ was gitignored), so its configs
+# are logged as "unconfirmed", dated by when each config was last committed.
+# Its config layout predates this one -- dwarf_planets instead of
+# massive_planetesimals, Noutputs instead of time_step, and always a giant
+# planet -- so it's summarized here following the legacy run_simulation.py.
+
+LEGACY_JUPITER_MASS_TO_SOLAR_MASS = 9.5479e-4  # legacy run_simulation.py
+
+
+def summarize_legacy_config(config):
+    """Log fields for a legacy-layout config (no simulation is built)."""
+    sim_cfg = config.get("simulation") or {}
+    integ = config.get("integration") or {}
+    disk = config.get("disk") or {}
+    dp = config.get("dwarf_planets") or {}
+    tp = config.get("test_particles") or {}
+    gp = config.get("giant_planet")
+    notes = []
+
+    maxtime = float(integ.get("maxtime", 0) or 0)
+    n_out = integ.get("Noutputs")
+    row = {
+        "run_name": sim_cfg.get("name", ""),
+        "maxtime_yr": _g(maxtime),
+        "output_every_yr": _g(maxtime / float(n_out)) if n_out else _g(integ.get("time_step")),
+        "integrator": integ.get("integrator", ""),
+        "exit_max_distance_AU": _g(integ.get("exit_max_distance")),
+        "amin_AU": _g(disk.get("amin")),
+        "amax_AU": _g(disk.get("amax")),
+        "emin": _g(disk.get("emin")),
+        "emax": _g(disk.get("emax")),
+        "imin_deg": _g(disk.get("imin_deg")),
+        "imax_deg": _g(disk.get("imax_deg")),
+        "n_massive": dp.get("N", ""),
+        "n_test": tp.get("N", ""),
+        "giant_planet": _giant_planet(config),
+    }
+
+    m_star = float((config.get("star") or {}).get("mass", 1.0))
+    m_planet = float(gp["mass_jupiter"]) * LEGACY_JUPITER_MASS_TO_SOLAR_MASS if gp else 0.0
+    if gp:
+        # legacy: sim.dt = fraction * sim.particles[1].P (units yr, AU, Msun: G = 4 pi^2)
+        period = (float(gp["a"]) ** 3 / (m_star + m_planet)) ** 0.5
+        fraction = float(integ.get("timestep_fraction_of_planet_period", 0.1))
+        row["dt_yr"] = _g(fraction * period)
+        row["dt_basis"] = f"{fraction:g} x giant planet orbital period"
+        if str(integ.get("integrator", "")).lower() == "ias15":
+            notes.append("IAS15 is adaptive: dt_yr is only the initial timestep")
+
+    n = int(dp.get("N", 0) or 0)
+    per_body = None
+    if dp.get("total_mass_earth") is not None:
+        row["mass_source"] = f"dwarf_planets.total_mass_earth = {dp['total_mass_earth']}"
+        per_body = float(dp["total_mass_earth"]) / n if n else None
+    elif dp.get("mass_fraction_of_giant_planet") is not None:
+        row["mass_source"] = (f"dwarf_planets.mass_fraction_of_giant_planet = "
+                              f"{dp['mass_fraction_of_giant_planet']}")
+        per_body = (float(dp["mass_fraction_of_giant_planet"]) * m_planet
+                    / EARTH_MASS_TO_SOLAR_MASS)
+    if n and per_body is not None:
+        row.update(mass_model="uniform", disk_mass_earth=_g(per_body * n),
+                   mp_mass_min_earth=_g(per_body), mp_mass_max_earth=_g(per_body))
+    elif n == 0:
+        row.update(mass_model="none (no massive bodies)", disk_mass_earth="0")
+
+    return row, notes
+
+
+def _git_out(repo, *args):
+    import subprocess
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                          text=True, check=True).stdout.strip()
+
+
+def log_legacy_repo(repo, ref="origin/main", path=None):
+    """Log every config/*.yaml at `ref` of the legacy repo as unconfirmed."""
+    repo = Path(repo).expanduser()
+    rows = read_log(path)
+    logged = {r.get("config") for r in rows}
+    added = []
+    names = _git_out(repo, "ls-tree", "--name-only", ref, "config/").splitlines()
+    for rel in sorted(n for n in names if n.endswith((".yaml", ".yml"))):
+        label = f"debris-disk-pipeline-legacy:{rel}"
+        if label in logged:
+            continue
+        config = yaml.safe_load(_git_out(repo, "show", f"{ref}:{rel}")) or {}
+        date, commit = _git_out(repo, "log", "-1", "--format=%aI %h", ref, "--", rel).split()
+        row, notes = summarize_legacy_config(config)
+        notes = [f"legacy pipeline config ({ref}); NOT confirmed it was ever run -- "
+                 "sent_at is when the config was last committed"] + notes
+        row.update(sent_at=date, target="unknown (legacy)", config=label,
+                   git_commit=f"legacy {commit}", status="unconfirmed",
+                   notes="; ".join(notes))
+        rows.append(row)
+        added.append(row["run_name"])
+    rows.sort(key=lambda r: _ts(r.get("sent_at", "")))
+    write_log(rows, path)
+    return added
+
+
+# ============================================================
 # CLI
 # ============================================================
 
@@ -395,6 +502,11 @@ def parse_args(argv=None):
     sub.add_parser("backfill", help="log every run in outputs/ not already logged")
     sub.add_parser("refresh", help="fill outcomes from outputs/<name>/run_metadata.yaml")
 
+    leg = sub.add_parser("legacy", help="log a debris-disk-pipeline-legacy checkout's "
+                                        "configs as unconfirmed runs")
+    leg.add_argument("repo", help="path to the legacy repo checkout")
+    leg.add_argument("--ref", default="origin/main")
+
     sh = sub.add_parser("show", help="print the log")
     sh.add_argument("--last", type=int, default=None)
 
@@ -423,6 +535,9 @@ def main(argv=None):
         print(f"Backfilled {len(added)} run(s): {', '.join(added) or 'none'}")
     elif args.command == "refresh":
         print(f"Updated {refresh(args.outputs, args.log)} run(s)")
+    elif args.command == "legacy":
+        added = log_legacy_repo(args.repo, args.ref, args.log)
+        print(f"Logged {len(added)} legacy config(s): {', '.join(added) or 'none'}")
     elif args.command == "show":
         show(args.log, args.last)
 

@@ -136,3 +136,23 @@ def test_summarizing_writes_nothing_to_the_run_output_dir(tmp_path):
     run_log.summarize_config(config)
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_legacy_config_summary():
+    legacy = {
+        "simulation": {"name": "legacy_run"},
+        "integration": {"integrator": "whfast", "timestep_fraction_of_planet_period": 0.1,
+                        "maxtime": 1.0e6, "Noutputs": 50, "exit_max_distance": 1000.0},
+        "star": {"mass": 1.28},
+        "giant_planet": {"mass_jupiter": 1.26, "a": 2.56},
+        "disk": {"amin": 30.0, "amax": 50.0},
+        "dwarf_planets": {"N": 500, "total_mass_earth": 1.0},
+        "test_particles": {"N": 1000},
+    }
+    row, notes = run_log.summarize_legacy_config(legacy)
+
+    assert (row["n_massive"], row["n_test"], row["output_every_yr"]) == (500, 1000, "20000")
+    assert (row["mass_model"], row["disk_mass_earth"]) == ("uniform", "1")
+    period = (2.56 ** 3 / (1.28 + 1.26 * 9.5479e-4)) ** 0.5
+    assert float(row["dt_yr"]) == pytest_approx(0.1 * period, rel=1e-5)
+    assert notes == []
