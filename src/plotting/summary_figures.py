@@ -14,6 +14,11 @@ Figures created:
 6. Initial/final semimajor axis vs eccentricity
 7. Initial/final semimajor axis vs inclination
 8. Initial/final x-y disk view
+
+Figures 6 and 7 frame their axes on the disk (see auto_orbit_limits) unless
+plots.limits.ae / plots.limits.ai set them, and the first/last snapshot rows
+they're drawn from are saved to figures/data/orbits_initial_final.csv so
+replot_orbits.py can redraw them with other limits later.
 """
 
 from pathlib import Path
@@ -329,101 +334,201 @@ def plot_survival_fraction(df, output_dir, dpi=200):
 # Initial/final orbital element plots
 # ============================================================
 
-def plot_a_vs_e_initial_final(df, output_dir, simulation_name, dpi=200):
+DISK_ROLES = ("test_particle", "massive_planetesimal")
+
+# Fraction of disk bodies (each tail) ignored when auto-framing the axes, so a
+# few scattered or ejected bodies can't zoom the whole plot out.
+OUTLIER_PERCENTILE = 0.5
+
+# Auto limits pad the disk's a-range by this fraction of its width.
+A_PAD_FRACTION = 0.15
+
+# Auto y-range upper limit used only when every disk body sits exactly on
+# e = 0 / i = 0 (otherwise the range follows the data, however small).
+Y_FALLBACK = {"e": 0.01, "inc_deg": 0.5}
+
+ORBIT_PLOTS = {
+    "ae": dict(column="e", ylabel="Eccentricity", title="Eccentricity",
+               filename="a_vs_e_initial_final.png"),
+    "ai": dict(column="inc_deg", ylabel="Inclination (deg)", title="Inclination",
+               filename="a_vs_i_initial_final.png"),
+}
+
+ORBIT_TABLE_FILENAME = "orbits_initial_final.csv"
+ORBIT_TABLE_COLUMNS = [
+    "snapshot", "time_yr", "role", "particle_index", "name", "a_AU", "e", "inc_deg",
+]
+
+
+def _bound_disk(snap_df):
+    """Disk bodies with a finite, bound orbit (a > 0)."""
+    disk = snap_df[snap_df["role"].isin(DISK_ROLES)]
+    return disk[np.isfinite(disk["a_AU"]) & (disk["a_AU"] > 0)]
+
+
+def auto_orbit_limits(first, last, column):
+    """
+    Axis limits framed on the disk: the giant planet and the most extreme
+    OUTLIER_PERCENTILE of disk bodies on each side are left out, and the
+    initial disk box always stays in view.
+    """
+    disk = pd.concat([_bound_disk(first), _bound_disk(last)])
+    disk_first = _bound_disk(first)
+    if disk.empty:
+        return None, None
+
+    a_lo, a_hi = np.percentile(disk["a_AU"], [OUTLIER_PERCENTILE, 100 - OUTLIER_PERCENTILE])
+    a_lo = min(a_lo, disk_first["a_AU"].min())
+    a_hi = max(a_hi, disk_first["a_AU"].max())
+    pad = max(A_PAD_FRACTION * (a_hi - a_lo), 0.01 * a_hi)
+
+    y = disk[column].dropna()
+    y_hi = max(np.percentile(y, 100 - OUTLIER_PERCENTILE), disk_first[column].max())
+    y_hi = 1.15 * y_hi if y_hi > 0 else Y_FALLBACK[column]
+
+    # a little below zero so bodies sitting on e = 0 / i = 0 aren't cut in half
+    return (a_lo - pad, a_hi + pad), (-0.03 * y_hi, y_hi)
+
+
+def _outside(x, y, xlim, ylim):
+    return (x < xlim[0]) | (x > xlim[1]) | (y < ylim[0]) | (y > ylim[1])
+
+
+def _draw_offaxis_planet(ax, gp, column, xlim, ylim):
+    """Mark an off-axis giant planet with an arrow at the edge it lies past."""
+    for _, row in gp.iterrows():
+        a, y = row["a_AU"], row[column]
+        xc = float(np.clip(a, *xlim))
+        yc = float(np.clip(y, *ylim))
+        if a < xlim[0]:
+            marker, ha, dx = "<", "left", 8
+        elif a > xlim[1]:
+            marker, ha, dx = ">", "right", -8
+        else:
+            marker, ha, dx = "^", "center", 0
+        ax.scatter([xc], [yc], s=150, marker=marker, color="C2", edgecolors="k",
+                   clip_on=False, zorder=5, label="Giant planet (off-axis)")
+        unit = " deg" if column == "inc_deg" else ""
+        ax.annotate(f"GP: a = {a:.3g} AU, {column.split('_')[0]} = {y:.3g}{unit}",
+                    (xc, yc), xytext=(dx, -12 if marker == "^" else 0),
+                    textcoords="offset points", ha=ha, va="center", fontsize=8,
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.8))
+
+
+def build_orbit_figure(first, last, kind, simulation_name, xlim=None, ylim=None):
+    """
+    Initial and final snapshot panels of semimajor axis vs e (kind="ae") or
+    inclination (kind="ai"). xlim / ylim override the auto limits; either may
+    be None, and so may either end of one ([lo, None]).
+    """
+    spec = ORBIT_PLOTS[kind]
+    column = spec["column"]
+
+    disk_first = first[first["role"].isin(DISK_ROLES)]
+    a_init_min = disk_first["a_AU"].min()
+    a_init_max = disk_first["a_AU"].max()
+    y_init_max = disk_first[column].max()
+
+    auto_x, auto_y = auto_orbit_limits(first, last, column)
+    xlim = _merge_limits(xlim, auto_x)
+    ylim = _merge_limits(ylim, auto_y)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharex=True, sharey=True)
+
+    for ax, snap_df, label in zip(axes, [first, last], ["Initial", "Final"]):
+        tp = snap_df[snap_df["role"] == "test_particle"]
+        mp = snap_df[snap_df["role"] == "massive_planetesimal"]
+        gp = snap_df[snap_df["role"] == "giant_planet"]
+
+        ax.scatter(tp["a_AU"], tp[column], s=5, label="Test particles")
+        ax.scatter(mp["a_AU"], mp[column], s=20, marker="o", label="Massive planetesimals")
+
+        gp_off = _outside(gp["a_AU"], gp[column], xlim, ylim)
+        if (~gp_off).any():
+            ax.scatter(gp.loc[~gp_off, "a_AU"], gp.loc[~gp_off, column], s=150,
+                       marker="D", edgecolors="k", color="C2", label="Giant planet")
+        _draw_offaxis_planet(ax, gp[gp_off], column, xlim, ylim)
+
+        ax.plot(
+            [a_init_min, a_init_max, a_init_max, a_init_min, a_init_min],
+            [0, 0, y_init_max, y_init_max, 0],
+            "k--",
+            linewidth=2,
+            label="Initial disk limits",
+        )
+
+        disk = snap_df[snap_df["role"].isin(DISK_ROLES)]
+        n_off = int(_outside(disk["a_AU"], disk[column], xlim, ylim).sum())
+        if n_off:
+            ax.text(0.01, 0.99, f"{n_off} of {len(disk)} disk bodies off-axis",
+                    transform=ax.transAxes, ha="left", va="top", fontsize=8,
+                    color="0.3")
+
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.tick_params(labelleft=True)
+
+        ax.set_xlabel("Semimajor Axis (AU)")
+        ax.set_ylabel(spec["ylabel"])
+        ax.set_title(f"{label} Snapshot\nt = {snap_df['time_yr'].iloc[0]:.0f} yr")
+        ax.legend(fontsize=8, loc="upper right")
+
+    fig.suptitle(f"{simulation_name}\nSemimajor Axis vs. {spec['title']}", fontsize=16)
+    fig.tight_layout()
+    return fig
+
+
+def _merge_limits(user, auto):
+    """User limits where given, auto limits for anything left as None."""
+    if user is None:
+        return auto
+    lo, hi = user
+    auto_lo, auto_hi = auto if auto is not None else (None, None)
+    return (auto_lo if lo is None else float(lo), auto_hi if hi is None else float(hi))
+
+
+def orbit_table(first, last):
+    """First and final snapshot rows, as saved for replot_orbits.py."""
+    return pd.concat([first, last])[ORBIT_TABLE_COLUMNS]
+
+
+def save_orbit_table(first, last, output_dir):
+    """Write the first/last snapshot rows so the a-e / a-i plots can be redrawn."""
+    data_dir = Path(output_dir) / "figures" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    path = data_dir / ORBIT_TABLE_FILENAME
+    orbit_table(first, last).to_csv(path, index=False)
+    print(f"Saved: {path}")
+    return path
+
+
+def load_orbit_table(path):
+    """Read a saved orbit table back into (first, last) snapshot frames."""
+    df = pd.read_csv(path)
+    return get_first_last_snapshots(df)
+
+
+def _config_limits(config, kind):
+    """plots.limits.<kind>.{xlim,ylim} from the run config (None when unset)."""
+    limits = (config.get("plots", {}) or {}).get("limits", {}) or {}
+    entry = limits.get(kind, {}) or {}
+    return entry.get("xlim"), entry.get("ylim")
+
+
+def plot_a_vs_e_initial_final(df, output_dir, simulation_name, dpi=200,
+                              xlim=None, ylim=None):
     """Plot semimajor axis vs eccentricity for the first and final snapshots."""
     first, last = get_first_last_snapshots(df)
-
-    disk_first = first[first["role"].isin(["test_particle", "massive_planetesimal"])]
-
-    a_init_min = disk_first["a_AU"].min()
-    a_init_max = disk_first["a_AU"].max()
-    e_init_max = disk_first["e"].max()
-
-    a_min = min(first["a_AU"].min(), last["a_AU"].min()) - 20
-    a_max = max(first["a_AU"].max(), last["a_AU"].max()) + 20
-    e_max = max(first["e"].max(), last["e"].max()) * 1.05
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-    for ax, snap_df, label in zip(axes, [first, last], ["Initial", "Final"]):
-        tp = snap_df[snap_df["role"] == "test_particle"]
-        mp = snap_df[snap_df["role"] == "massive_planetesimal"]
-        gp = snap_df[snap_df["role"] == "giant_planet"]
-
-        ax.scatter(tp["a_AU"], tp["e"], s=5, label="Test particles")
-        ax.scatter(mp["a_AU"], mp["e"], s=20, marker="o", label="Massive planetesimals")
-        ax.scatter(gp["a_AU"], gp["e"], s=150, marker="D", edgecolors="k", label="Giant planet")
-
-        ax.plot(
-            [a_init_min, a_init_max, a_init_max, a_init_min, a_init_min],
-            [0, 0, e_init_max, e_init_max, 0],
-            "k--",
-            linewidth=2,
-            label="Initial disk limits",
-        )
-
-        ax.set_xlim(a_min, a_max)
-        ax.set_ylim(0, e_max)
-
-        ax.set_xlabel("Semimajor Axis (AU)")
-        ax.set_ylabel("Eccentricity")
-        ax.set_title(f"{label} Snapshot\nt = {snap_df['time_yr'].iloc[0]:.0f} yr")
-        ax.legend()
-
-    fig.suptitle(f"{simulation_name}\nSemimajor Axis vs. Eccentricity", fontsize=16)
-    fig.tight_layout()
-
-    save_figure(fig, output_dir, "a_vs_e_initial_final.png", dpi=dpi)
+    fig = build_orbit_figure(first, last, "ae", simulation_name, xlim, ylim)
+    save_figure(fig, output_dir, ORBIT_PLOTS["ae"]["filename"], dpi=dpi)
 
 
-def plot_a_vs_i_initial_final(df, output_dir, simulation_name, dpi=200):
+def plot_a_vs_i_initial_final(df, output_dir, simulation_name, dpi=200,
+                              xlim=None, ylim=None):
     """Plot semimajor axis vs inclination for the first and final snapshots."""
     first, last = get_first_last_snapshots(df)
-
-    disk_first = first[first["role"].isin(["test_particle", "massive_planetesimal"])]
-
-    a_init_min = disk_first["a_AU"].min()
-    a_init_max = disk_first["a_AU"].max()
-    i_init_max = disk_first["inc_deg"].max()
-
-    a_min = min(first["a_AU"].min(), last["a_AU"].min()) - 20
-    a_max = max(first["a_AU"].max(), last["a_AU"].max()) + 20
-
-    i_min = -0.5
-    i_max = max(i_init_max, first["inc_deg"].max(), last["inc_deg"].max()) * 1.2
-    i_max = max(i_max, 0.5)
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-    for ax, snap_df, label in zip(axes, [first, last], ["Initial", "Final"]):
-        tp = snap_df[snap_df["role"] == "test_particle"]
-        mp = snap_df[snap_df["role"] == "massive_planetesimal"]
-        gp = snap_df[snap_df["role"] == "giant_planet"]
-
-        ax.scatter(tp["a_AU"], tp["inc_deg"], s=5, label="Test particles")
-        ax.scatter(mp["a_AU"], mp["inc_deg"], s=20, marker="o", label="Massive planetesimals")
-        ax.scatter(gp["a_AU"], gp["inc_deg"], s=150, marker="D", edgecolors="k", label="Giant planet")
-
-        ax.plot(
-            [a_init_min, a_init_max, a_init_max, a_init_min, a_init_min],
-            [0, 0, i_init_max, i_init_max, 0],
-            "k--",
-            linewidth=2,
-            label="Initial disk limits",
-        )
-
-        ax.set_xlim(a_min, a_max)
-        ax.set_ylim(i_min, i_max)
-
-        ax.set_xlabel("Semimajor Axis (AU)")
-        ax.set_ylabel("Inclination (deg)")
-        ax.set_title(f"{label} Snapshot\nt = {snap_df['time_yr'].iloc[0]:.0f} yr")
-        ax.legend()
-
-    fig.suptitle(f"{simulation_name}\nSemimajor Axis vs. Inclination", fontsize=16)
-    fig.tight_layout()
-
-    save_figure(fig, output_dir, "a_vs_i_initial_final.png", dpi=dpi)
+    fig = build_orbit_figure(first, last, "ai", simulation_name, xlim, ylim)
+    save_figure(fig, output_dir, ORBIT_PLOTS["ai"]["filename"], dpi=dpi)
 
 
 # ============================================================
@@ -538,8 +643,11 @@ def generate_summary_figures(archive_path, config, run_output_dir):
     plot_rms_eccentricity(df, run_output_dir, dpi=dpi)
     plot_rms_inclination(df, run_output_dir, dpi=dpi)
 
-    plot_a_vs_e_initial_final(df, run_output_dir, simulation_name, dpi=dpi)
-    plot_a_vs_i_initial_final(df, run_output_dir, simulation_name, dpi=dpi)
+    first, last = get_first_last_snapshots(df)
+    save_orbit_table(first, last, run_output_dir)
+    for kind, plot in (("ae", plot_a_vs_e_initial_final), ("ai", plot_a_vs_i_initial_final)):
+        xlim, ylim = _config_limits(config, kind)
+        plot(df, run_output_dir, simulation_name, dpi=dpi, xlim=xlim, ylim=ylim)
     plot_xy_initial_final(df, run_output_dir, simulation_name, dpi=dpi)
 
     print("All summary figures saved.")

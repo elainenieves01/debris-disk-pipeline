@@ -57,6 +57,40 @@ plots:
 `run_metadata.yaml`, `config.yaml`, and `environment.txt` are always written
 regardless of this toggle.
 
+## Zooming the a–e / a–i figures
+
+`a_vs_e_initial_final.png` and `a_vs_i_initial_final.png` frame their axes on
+the disk: the giant planet and the most extreme 0.5% of disk bodies on each
+side don't set the limits. A giant planet that falls off-axis is drawn as an
+arrow at the edge with its a and e (or i), and each panel notes how many disk
+bodies are off-axis.
+
+To fix the limits before a run, set them in the config (`null` = automatic):
+
+```yaml
+plots:
+  limits:
+    ae:
+      xlim: [90, 115]   # semimajor axis, AU
+      ylim: [0, 0.1]    # eccentricity
+    ai:
+      xlim: [90, 115]
+      ylim: null        # inclination, deg
+```
+
+To change them after a run, redraw from the first/last snapshot table the
+pipeline saves at `outputs/<name>/figures/data/orbits_initial_final.csv`:
+
+```bash
+python src/plotting/replot_orbits.py --run outputs/<name> --a 90 115 --e 0 0.1 --i 0 auto
+```
+
+Any limit left out, or given as `auto`, stays automatic. The figures are
+overwritten in place (`--suffix _zoom` writes new files instead; rerunning with
+no limits restores the defaults), and `--show` also opens a zoom/pan window.
+Runs made before the table was saved need their archive once:
+`--archive path/to/<name>.bin`.
+
 ## Running long simulations
 
 A process started from an interactive shell (including anything launched inside a
