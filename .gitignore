@@ -20,6 +20,8 @@ config/generated/*
 *.csv
 # ...except the small first/last-snapshot table replot_orbits.py redraws from
 !outputs/*/figures/data/orbits_initial_final.csv
+# ...and the bodies apply_rayleigh_cut.py left out of each cut
+!outputs/*/figures/rayleigh_cut_*/excluded_bodies.csv
 # ...and the log of every simulation sent out (src/launch/run_log.py)
 !/simulation_log.csv
 
