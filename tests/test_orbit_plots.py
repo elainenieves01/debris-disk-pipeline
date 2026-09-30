@@ -73,3 +73,24 @@ def test_replot_from_saved_table(tmp_path):
     figures = tmp_path / "figures"
     assert (figures / "a_vs_e_initial_final_zoom.png").stat().st_size > 0
     assert (figures / "a_vs_i_initial_final_zoom.png").stat().st_size > 0
+
+
+def test_rms_eccentricity_rayleigh_cut_drops_scattered_body(tmp_path):
+    # Two snapshots of a Rayleigh-stirred disk with one body flung out.
+    rng = np.random.default_rng(3)
+    rows = []
+    for snap, t in ((0, 0.0), (1, 1.0e4)):
+        e = rng.rayleigh(0.01, 400)
+        e[5] = 0.4
+        for k, ek in enumerate(e):
+            rows.append({"snapshot": snap, "time_yr": t, "role": "massive_planetesimal",
+                         "name": f"MP_{k}", "e": ek})
+    df = pd.DataFrame(rows)
+
+    times, rms_all, rms_cut, excluded = sf.rms_eccentricity_rayleigh_cut(df, 3.2e-5, 5.0)
+    assert excluded == ["MP_5"]
+    assert np.all(rms_cut < rms_all)
+
+    sf.plot_rms_eccentricity_rayleigh_cut(df, tmp_path, 3.2e-5, 5.0, dpi=50)
+    assert (tmp_path / "figures" / "rms_eccentricity_vs_time_all_vs_cut.png").exists()
+    assert not (tmp_path / "figures" / "rms_eccentricity_vs_time.png").exists()

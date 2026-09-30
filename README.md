@@ -91,6 +91,38 @@ no limits restores the defaults), and `--show` also opens a zoom/pan window.
 Runs made before the table was saved need their archive once:
 `--archive path/to/<name>.bin`.
 
+### Rayleigh outlier cut
+
+The C_e diagnostic in each report leaves out massive planetesimals that are
+Rayleigh outliers at the final snapshot (e > N sigma, sigma = median(e)/sqrt(2 ln 2),
+applied once the disk is stirred, median(e) >= 30 x `disk.emax`) -- bodies
+scattered by a single strong encounter rather than stirred with the disk. The
+report shows C_e both with and without the cut. N defaults to 5; set it per run
+in the config:
+
+```yaml
+rayleigh_cut:
+  nsigma: 5
+```
+
+The figures are opt-in: the pipeline only makes the regular ones. To redraw a
+finished run's summary figures without the outliers:
+
+```bash
+python src/plotting/apply_rayleigh_cut.py --run outputs/<name>
+python src/plotting/apply_rayleigh_cut.py --run outputs/<name> --nsigma 4
+```
+
+This writes the eight summary figures under their usual names, an all-vs-cut
+RMS eccentricity comparison (`rms_eccentricity_vs_time_all_vs_cut.png`) and
+`excluded_bodies.csv` to `outputs/<name>/figures/rayleigh_cut_<N>sigma/`, one
+folder per factor, so different factors never overwrite each other. Each figure
+is labelled with the excluded bodies. `--nsigma` defaults to the run config's
+`rayleigh_cut.nsigma`, else 5. The original figures are not touched, and the
+integration itself always keeps every body. If the archive is not at
+`outputs/<name>/<name>.bin`, pass `--archive path/to/<name>.bin`. Nothing is
+written if the disk is not stirred or has no outliers.
+
 ## Simulation log
 
 `simulation_log.csv` (repo root) has one row per simulation sent out, in

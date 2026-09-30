@@ -15,12 +15,18 @@ Figures created:
 7. Initial/final semimajor axis vs inclination
 8. Initial/final x-y disk view
 
+Opt-in: generate_rayleigh_cut_figures() redraws figures 1-8 with the
+Rayleigh-cut outliers removed, plus an all-vs-cut RMS eccentricity comparison,
+into figures/rayleigh_cut_<n>sigma/. The pipeline never calls it; run
+apply_rayleigh_cut.py on a finished run.
+
 Figures 6 and 7 frame their axes on the disk (see auto_orbit_limits) unless
 plots.limits.ae / plots.limits.ai set them, and the first/last snapshot rows
 they're drawn from are saved to figures/data/orbits_initial_final.csv so
 replot_orbits.py can redraw them with other limits later.
 """
 
+from contextlib import contextmanager
 from pathlib import Path
 
 import matplotlib
@@ -33,6 +39,7 @@ import pandas as pd
 import rebound
 
 from provenance import load_run_metadata, stamp_figure
+from rayleigh_cut import cut_nsigma_from_config, rayleigh_outlier_cut
 
 
 # Provenance metadata stamped onto every figure saved via save_figure().
@@ -44,6 +51,23 @@ def set_default_provenance(metadata):
     """Set the provenance metadata that save_figure() stamps onto figures."""
     global _DEFAULT_PROVENANCE
     _DEFAULT_PROVENANCE = metadata
+
+
+# Figure variant: save_figure() writes into figures/<subdir>/ and adds a label
+# in the bottom-right corner. Set only inside figure_variant().
+_FIGURE_SUBDIR = None
+_FIGURE_LABEL = None
+
+
+@contextmanager
+def figure_variant(subdir, label):
+    """Route every save_figure() call in the block to figures/<subdir>/ with a label."""
+    global _FIGURE_SUBDIR, _FIGURE_LABEL
+    _FIGURE_SUBDIR, _FIGURE_LABEL = subdir, label
+    try:
+        yield
+    finally:
+        _FIGURE_SUBDIR, _FIGURE_LABEL = None, None
 
 
 # ============================================================
@@ -131,8 +155,13 @@ def save_figure(fig, output_dir, filename, dpi=200, provenance=None):
     metadata = provenance if provenance is not None else _DEFAULT_PROVENANCE
     if metadata:
         stamp_figure(fig, metadata)
+    if _FIGURE_LABEL:
+        fig.text(0.995, 0.005, _FIGURE_LABEL, fontsize=6, color="C1",
+                 ha="right", va="bottom")
 
     output_dir = Path(output_dir) / "figures"
+    if _FIGURE_SUBDIR:
+        output_dir = output_dir / _FIGURE_SUBDIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     save_path = output_dir / filename
@@ -256,6 +285,76 @@ def plot_rms_eccentricity(df, output_dir, dpi=200):
     ax.grid(alpha=0.3)
 
     save_figure(fig, output_dir, "rms_eccentricity_vs_time.png", dpi=dpi)
+
+
+def rms_eccentricity_rayleigh_cut(df, e_initial_max, nsigma):
+    """Per-snapshot RMS(e) of the massive planetesimals, all vs Rayleigh-cut.
+
+    The outliers are identified once, at the final snapshot, with the same cut
+    the C_e diagnostic uses (``rayleigh_cut.rayleigh_outlier_cut``), and those
+    bodies are left out at every snapshot -- "outlier" is a property of a body,
+    so the cut curve is continuous and matches the bodies C_e excludes.
+    ``e_initial_max`` is ``config["disk"]["emax"]``; ``nsigma`` the cut factor.
+
+    Returns (times, rms_all, rms_cut, excluded_names); rms_all / rms_cut are
+    NaN at snapshots with no massive planetesimals.
+    """
+    all_snapshots = sorted(df["snapshot"].unique())
+    times = get_times(df)
+    mp = df[df["role"] == "massive_planetesimal"]
+    rms_all = np.full(len(all_snapshots), np.nan)
+    rms_cut = np.full(len(all_snapshots), np.nan)
+    if mp.empty:
+        return times, rms_all, rms_cut, []
+
+    last = mp[mp["snapshot"] == mp["snapshot"].max()]
+    cut = rayleigh_outlier_cut(last["e"].to_numpy(), e_initial_max, nsigma)
+    excluded = list(last["name"].to_numpy()[~cut["keep"]])
+
+    groups = dict(tuple(mp.groupby("snapshot")))
+    for i, snap in enumerate(all_snapshots):
+        g = groups.get(snap)
+        if g is None or g.empty:
+            continue
+        ecc = g["e"].to_numpy()
+        kept = ecc[~g["name"].isin(excluded).to_numpy()]
+        rms_all[i] = np.sqrt(np.mean(ecc ** 2))
+        rms_cut[i] = np.sqrt(np.mean(kept ** 2))
+
+    return times, rms_all, rms_cut, excluded
+
+
+def plot_rms_eccentricity_rayleigh_cut(df, output_dir, e_initial_max, nsigma, dpi=200):
+    """Plot massive-planetesimal RMS eccentricity vs time with and without the cut.
+
+    Saved as rms_eccentricity_vs_time_all_vs_cut.png (inside the cut folder
+    when called from generate_rayleigh_cut_figures). Skipped if the run has no
+    massive planetesimals.
+    """
+    times, rms_all, rms_cut, excluded = rms_eccentricity_rayleigh_cut(
+        df, e_initial_max, nsigma)
+    if np.all(np.isnan(rms_all)):
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    ax.plot(times, rms_all, color="0.55", linestyle="--",
+            label="Massive planetesimals, all")
+    ax.plot(times, rms_cut, color="C1",
+            label=f"Massive planetesimals, Rayleigh {nsigma:g}\u03c3 cut")
+
+    note = ("Excluded at every snapshot (outliers at final snapshot): "
+            + ", ".join(excluded) if excluded else "No outliers at final snapshot")
+    ax.text(0.02, 0.98, note, transform=ax.transAxes,
+            ha="left", va="top", fontsize=8, color="0.3")
+
+    ax.set_xlabel("Time (yr)")
+    ax.set_ylabel("RMS Eccentricity")
+    ax.set_title("RMS Eccentricity vs Time (Rayleigh outlier cut)")
+    ax.legend(loc="lower right")
+    ax.grid(alpha=0.3)
+
+    save_figure(fig, output_dir, "rms_eccentricity_vs_time_all_vs_cut.png", dpi=dpi)
 
 
 def plot_rms_inclination(df, output_dir, dpi=200):
@@ -620,6 +719,79 @@ def plot_xy_initial_final(df, output_dir, simulation_name, dpi=200):
     fig.tight_layout(rect=[0, 0.08, 1, 1])
 
     save_figure(fig, output_dir, "xy_initial_final.png", dpi=dpi)
+
+
+# ============================================================
+# Rayleigh-cut variant of the summary figures
+# ============================================================
+
+EXCLUDED_BODIES_FILENAME = "excluded_bodies.csv"
+
+
+def rayleigh_cut_subdir(nsigma):
+    """figures/ subfolder for a cut factor, e.g. 5 -> rayleigh_cut_5sigma."""
+    return f"rayleigh_cut_{nsigma:g}sigma"
+
+
+def generate_rayleigh_cut_figures(df, config, run_output_dir, nsigma=None, dpi=None):
+    """Redraw the summary figures with the Rayleigh-cut outliers removed.
+
+    The outliers are the massive planetesimals with final e > nsigma * sigma
+    (``rms_eccentricity_rayleigh_cut``; nsigma defaults to the run config's
+    ``rayleigh_cut.nsigma``, else 5 -- the same bodies the C_e diagnostic
+    excludes). They are dropped from every snapshot; figures 1-8 are written to
+    figures/rayleigh_cut_<n>sigma/ under their usual names, along with an
+    all-vs-cut RMS eccentricity comparison and excluded_bodies.csv. The regular
+    figures are not touched. Returns the excluded names; if there are none
+    (e.g. the disk is not stirred), nothing is written.
+    """
+    if nsigma is None:
+        nsigma = cut_nsigma_from_config(config)
+    nsigma = float(nsigma)
+    emax = float(config["disk"]["emax"])
+    simulation_name = config["simulation"]["name"]
+    if dpi is None:
+        dpi = int(config.get("plots", {}).get("dpi", 200))
+
+    excluded = rms_eccentricity_rayleigh_cut(df, emax, nsigma)[3]
+    if not excluded:
+        print("Rayleigh cut: no outliers at the final snapshot (or disk not "
+              "stirred) -- the cut figures would match the originals; nothing written.")
+        return excluded
+
+    subdir = rayleigh_cut_subdir(nsigma)
+    out_dir = Path(run_output_dir) / "figures" / subdir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    mp = df[df["role"] == "massive_planetesimal"]
+    last = mp[mp["snapshot"] == mp["snapshot"].max()]
+    cut = rayleigh_outlier_cut(last["e"].to_numpy(), emax, nsigma)
+    table = last[last["name"].isin(excluded)][["name", "time_yr", "a_AU", "e"]].copy()
+    table = table.rename(columns={"time_yr": "final_time_yr", "a_AU": "final_a_AU",
+                                  "e": "final_e"})
+    table["nsigma"] = nsigma
+    table["e_cut"] = cut["e_cut"]
+    table["median_e"] = cut["median_e"]
+    table.sort_values("final_e", ascending=False).to_csv(
+        out_dir / EXCLUDED_BODIES_FILENAME, index=False)
+    print(f"Saved: {out_dir / EXCLUDED_BODIES_FILENAME}")
+
+    df_cut = df[~df["name"].isin(excluded)]
+    label = (f"Rayleigh {nsigma:g}\u03c3 outlier cut: "
+             + ", ".join(excluded) + " removed from every snapshot")
+    with figure_variant(subdir, label):
+        plot_rms_eccentricity_rayleigh_cut(df, run_output_dir, emax, nsigma, dpi=dpi)
+        plot_survival_fraction(df_cut, run_output_dir, dpi=dpi)
+        plot_mean_semimajor_axis(df_cut, run_output_dir, dpi=dpi)
+        plot_mean_eccentricity(df_cut, run_output_dir, dpi=dpi)
+        plot_rms_eccentricity(df_cut, run_output_dir, dpi=dpi)
+        plot_rms_inclination(df_cut, run_output_dir, dpi=dpi)
+        for kind, plot in (("ae", plot_a_vs_e_initial_final),
+                           ("ai", plot_a_vs_i_initial_final)):
+            xlim, ylim = _config_limits(config, kind)
+            plot(df_cut, run_output_dir, simulation_name, dpi=dpi, xlim=xlim, ylim=ylim)
+        plot_xy_initial_final(df_cut, run_output_dir, simulation_name, dpi=dpi)
+
+    return excluded
 
 
 # ============================================================

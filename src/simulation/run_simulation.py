@@ -19,6 +19,12 @@ from plots import (
     plot_count_histograms,
 )
 from tee_output import start_capturing_stdout, stop_capturing_stdout
+from rayleigh_cut import (
+    RAYLEIGH_KS_WARN_P,
+    STIRRED_MEDIAN_FACTOR,
+    cut_nsigma_from_config,
+    rayleigh_outlier_cut,
+)
 from provenance import (
     run_output_dir_for,
     capture_run_provenance,
@@ -804,6 +810,15 @@ def compute_effective_stirring_C_e(sim, config):
     (orbits relative to the star, matching ``src/plotting/summary_figures.py``),
     inverts Eq. 10 for T, then Eq. 9 for C_e. Returns a dict of the ingredients
     and results, or ``None`` if the run has no massive planetesimals / t <= 0.
+
+    Outlier cut (``rayleigh_cut.rayleigh_outlier_cut``): bodies with
+    e > nsigma * sigma, sigma = median(e) / sqrt(2 ln 2), are
+    excluded from RMS(e) -- provided the disk has been stirred, i.e.
+    median(e) >= STIRRED_MEDIAN_FACTOR * disk.emax; otherwise no body is
+    excluded. nsigma is ``rayleigh_cut.nsigma`` from the config (default 5).
+    M and Mdisc always use every massive planetesimal. The all-body RMS(e) / C_e, the excluded
+    bodies, and a KS test of the kept eccentricities against a Rayleigh
+    distribution are returned alongside, so the cut stays auditable.
     """
     if int(config["massive_planetesimals"]["N"]) <= 0 or sim.t <= 0.0:
         return None
@@ -817,8 +832,18 @@ def compute_effective_stirring_C_e(sim, config):
         return None
 
     n_mp = len(mp_indices)
-    e_sq = [sim.particles[k].orbit(primary=star).e ** 2 for k in mp_indices]
-    rms_e = float(np.sqrt(np.mean(e_sq)))
+    ecc = np.array([sim.particles[k].orbit(primary=star).e for k in mp_indices])
+    rms_e_all = float(np.sqrt(np.mean(ecc ** 2)))
+
+    nsigma = cut_nsigma_from_config(config)
+    cut = rayleigh_outlier_cut(ecc, float(config["disk"]["emax"]), nsigma)
+    keep = cut["keep"]
+    excluded = sorted(
+        ((sim.particles[k].name, float(e)) for k, e, kept in zip(mp_indices, ecc, keep)
+         if not kept),
+        key=lambda item: -item[1],
+    )
+    rms_e = float(np.sqrt(np.mean(ecc[keep] ** 2)))
 
     m_disc = float(sum(sim.particles[k].m for k in mp_indices))  # Msun
     m_max = float(max(sim.particles[k].m for k in mp_indices))   # Msun, largest stirrer
@@ -826,19 +851,36 @@ def compute_effective_stirring_C_e(sim, config):
     _, _, a_belt, da_belt, Mstar = _belt_geometry(config)
     omega = float(np.sqrt(sim.G * Mstar / a_belt ** 3))  # mean motion at belt centre
 
-    # Invert RMS(e) = (2 t / T)^(1/4)  ->  T^-1 = RMS(e)^4 / (2 t)
-    t_inv = rms_e ** 4 / (2.0 * sim.t)
+    def invert(rms):
+        # Invert RMS(e) = (2 t / T)^(1/4)  ->  T^-1 = RMS(e)^4 / (2 t), then Eq. 9.
+        t_inv = rms ** 4 / (2.0 * sim.t)
+        c_e = (
+            2.0 * np.pi * t_inv
+            / (omega * (a_belt / da_belt) * (m_max / Mstar) * (m_disc / Mstar))
+        )
+        return t_inv, c_e
 
-    # Invert Eq. 9 for C_e.
-    c_e = (
-        2.0 * np.pi * t_inv
-        / (omega * (a_belt / da_belt) * (m_max / Mstar) * (m_disc / Mstar))
-    )
+    t_inv, c_e = invert(rms_e)
+    _, c_e_all = invert(rms_e_all)
 
     return {
         "t": float(sim.t),
         "n_mp": n_mp,
+        "n_used": int(keep.sum()),
         "rms_e": rms_e,
+        "rms_e_all": rms_e_all,
+        "rayleigh_sigma": cut["sigma"],
+        "e_cut": cut["e_cut"],
+        "cut_nsigma": nsigma,
+        "cut_applied": cut["applied"],
+        "median_e": cut["median_e"],
+        "stirred_threshold": cut["stirred_threshold"],
+        "stirred_factor": STIRRED_MEDIAN_FACTOR,
+        "ks_warning": cut["ks_warning"],
+        "ks_warn_p": RAYLEIGH_KS_WARN_P,
+        "excluded": excluded,
+        "ks_D": cut["ks_D"],
+        "ks_p": cut["ks_p"],
         "a_belt": a_belt,
         "da_belt": da_belt,
         "a_over_da": a_belt / da_belt,
@@ -848,6 +890,7 @@ def compute_effective_stirring_C_e(sim, config):
         "omega": omega,
         "T": float(1.0 / t_inv),
         "C_e": float(c_e),
+        "C_e_all": float(c_e_all),
         "has_giant_planet": config.get("giant_planet") is not None,
         "exceeds_reference": bool(c_e >= KIRVOV_C_E_REFERENCE),
         "reference": KIRVOV_C_E_REFERENCE,
@@ -869,7 +912,31 @@ def report_effective_stirring_C_e(sim, config):
                 "below is only indicative."
             )
         print(f"  Final time:                 t = {r['t']:.6e} yr")
-        print(f"  RMS eccentricity ({r['n_mp']} MPs):   {r['rms_e']:.6e}")
+        print(
+            f"  Rayleigh outlier cut:       e > {r['cut_nsigma']:g} sigma = "
+            f"{r['e_cut']:.4e} (sigma = median(e)/sqrt(2 ln 2) = "
+            f"{r['rayleigh_sigma']:.4e})"
+        )
+        print(
+            f"  Stirred-disk check:         median(e) = {r['median_e']:.4e} vs "
+            f"{r['stirred_factor']:g} x disk.emax = {r['stirred_threshold']:.4e} -> "
+            + ("stirred, cut applied" if r["cut_applied"]
+               else "NOT stirred, cut not applied (every MP used)")
+        )
+        if r["cut_applied"]:
+            excluded = ", ".join(f"{name} (e = {e:.4f})" for name, e in r["excluded"])
+            print(f"  Excluded MPs:               {len(r['excluded'])}"
+                  + (f" -- {excluded}" if excluded else ""))
+        print(
+            f"  KS test of kept e vs Rayleigh: D = {r['ks_D']:.4f}, "
+            f"p = {r['ks_p']:.3g}"
+            + (f"  (WARNING: p < {r['ks_warn_p']:g}, kept e deviates from a "
+               "Rayleigh distribution)" if r["ks_warning"] else "")
+        )
+        print(
+            f"  RMS eccentricity ({r['n_used']} of {r['n_mp']} MPs): "
+            f"{r['rms_e']:.6e}  (all MPs: {r['rms_e_all']:.6e})"
+        )
         print(
             f"  Belt geometry:              a = {r['a_belt']:g}, "
             f"da = {r['da_belt']:g}, a/da = {r['a_over_da']:g}"
@@ -879,7 +946,10 @@ def report_effective_stirring_C_e(sim, config):
             f"M_disc = {r['m_disc']:.6e} Msun"
         )
         print(f"  Implied stirring timescale: T = {r['T']:.6e} yr")
-        print(f"  Effective stirring factor:  C_e = {r['C_e']:.4f}")
+        print(
+            f"  Effective stirring factor:  C_e = {r['C_e']:.4f}  "
+            f"(all MPs, no cut: {r['C_e_all']:.4f})"
+        )
 
         if r["exceeds_reference"]:
             print(

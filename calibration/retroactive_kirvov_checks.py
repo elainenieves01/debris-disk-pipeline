@@ -103,8 +103,22 @@ def format_section(run_name, config_note, c_e, cov, tmax):
     else:
         lines += [
             f"- Final time: t = {c_e['t']:.6e} yr",
-            f"- RMS eccentricity of the {c_e['n_mp']} massive planetesimals: "
-            f"{c_e['rms_e']:.6e}",
+            f"- Rayleigh outlier cut: e > {c_e['cut_nsigma']:g} sigma = "
+            f"{c_e['e_cut']:.4e} (sigma = median(e)/sqrt(2 ln 2) = "
+            f"{c_e['rayleigh_sigma']:.4e})",
+            f"- Stirred-disk check: median(e) = {c_e['median_e']:.4e} vs "
+            f"{c_e['stirred_factor']:g} x disk.emax = {c_e['stirred_threshold']:.4e} -> "
+            + ("stirred, cut applied" if c_e["cut_applied"]
+               else "NOT stirred, cut not applied (every massive planetesimal used)"),
+            *([f"- Excluded massive planetesimals: {len(c_e['excluded'])}"
+               + (" -- " + ", ".join(f"{n} (e = {e:.4f})" for n, e in c_e["excluded"])
+                  if c_e["excluded"] else "")] if c_e["cut_applied"] else []),
+            f"- KS test of kept e vs Rayleigh: D = {c_e['ks_D']:.4f}, "
+            f"p = {c_e['ks_p']:.3g}"
+            + (f" (**WARNING**: p < {c_e['ks_warn_p']:g}, kept e deviates from a "
+               "Rayleigh distribution)" if c_e["ks_warning"] else ""),
+            f"- RMS eccentricity of {c_e['n_used']} of {c_e['n_mp']} massive "
+            f"planetesimals: {c_e['rms_e']:.6e} (all: {c_e['rms_e_all']:.6e})",
             f"- Belt geometry: a = {c_e['a_belt']:g} au, da = {c_e['da_belt']:g} au, "
             f"a/da = {c_e['a_over_da']:g}",
             f"- Masses: M_max (largest MP) = {c_e['m_max']:.6e} Msun, "
@@ -113,7 +127,7 @@ def format_section(run_name, config_note, c_e, cov, tmax):
             f"- Implied stirring timescale: T = {c_e['T']:.6e} yr",
             f"- **Effective stirring constant: C_e = {c_e['C_e']:.4f}** "
             f"(Ida & Makino 1993 / Krivov & Booth 2018 reference value: "
-            f"{c_e['reference']:g})",
+            f"{c_e['reference']:g}; all MPs, no cut: C_e = {c_e['C_e_all']:.4f})",
         ]
         if c_e["has_giant_planet"]:
             lines.append(
