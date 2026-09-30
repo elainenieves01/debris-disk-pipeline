@@ -3098,16 +3098,12 @@ Total runtime: 4 days, 21 hours, 57 minutes, 44 seconds
 
 Krivov & Booth (2018) self-stirring check (Eqs. 9-10):
   Final time:                 t = 1.000000e+07 yr
-  Rayleigh outlier cut:       e > 5 sigma = 7.5966e-02 (sigma = median(e)/sqrt(2 ln 2) = 1.5193e-02)
-  Stirred-disk check:         median(e) = 1.7889e-02 vs 30 x disk.emax = 9.6000e-04 -> stirred, cut applied
-  Excluded MPs:               1 -- MP_601 (e = 0.1833)
-  KS test of kept e vs Rayleigh: D = 0.0190, p = 0.931
-  RMS eccentricity (799 of 800 MPs): 2.116428e-02  (all MPs: 2.212155e-02)
+  RMS eccentricity (800 MPs):   2.212155e-02
   Belt geometry:              a = 100, da = 10, a/da = 10
-  Masses:                     M_max = 1.638534e-08 Msun, M_disc = 3.003490e-06 Msun
-  Implied stirring timescale: T = 9.968176e+13 yr
-  Effective stirring factor:  C_e = 20.3850  (all MPs, no cut: 24.3309)
-  NOTE: C_e revised 2026-09-30; the values above were recomputed from the final snapshot of the archive (the original report is kept as `SS_800MP_10Myr_1Mearth_slopeq4.5_report_original.md`): (1) `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; it now uses the *maximum* massive-planetesimal mass of the sample. (2) RMS(e) now excludes Rayleigh outliers, e > 5 sigma with sigma = median(e)/sqrt(2 ln 2) (bodies scattered by a single strong encounter, e.g. an initially Hill-overlapping pair), applied only once the disk is stirred (median(e) >= 30 x disk.emax); a KS test against a Rayleigh distribution is reported as a diagnostic but does not switch the cut. M and M_disc still use every massive planetesimal. History: C_e = 106.1886 (mean M, all MPs) -> 24.3309 (max M, all MPs) -> 20.3850 (max M, Rayleigh cut; current).
+  Masses:                     M_indiv = 3.754362e-09 Msun, M_disc = 3.003490e-06 Msun
+  Implied stirring timescale: T = 8.351567e+13 yr
+  Effective stirring factor:  C_e = 106.1886
+  WARNING: C_e = 106.1886 >= 40 (Ida & Makino 1993 canonical value) -- this run stirs at or above the analytic self-stirring rate.
 Saved archive: outputs/SS_800MP_10Myr_1Mearth_slopeq4.5/SS_800MP_10Myr_1Mearth_slopeq4.5.bin
 Number of snapshots saved: 1001
 Archive time range: 0.000e+00 yr to 1.000e+07 yr

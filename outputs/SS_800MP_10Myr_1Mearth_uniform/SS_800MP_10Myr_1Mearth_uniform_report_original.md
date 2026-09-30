@@ -3089,16 +3089,11 @@ Total runtime: 4 days, 11 hours, 59 minutes, 50 seconds
 
 Krivov & Booth (2018) self-stirring check (Eqs. 9-10):
   Final time:                 t = 1.000000e+07 yr
-  Rayleigh outlier cut:       e > 5 sigma = 5.9220e-02 (sigma = median(e)/sqrt(2 ln 2) = 1.1844e-02)
-  Stirred-disk check:         median(e) = 1.3945e-02 vs 30 x disk.emax = 9.6000e-04 -> stirred, cut applied
-  Excluded MPs:               0
-  KS test of kept e vs Rayleigh: D = 0.0227, p = 0.796
-  RMS eccentricity (800 of 800 MPs): 1.673671e-02  (all MPs: 1.673671e-02)
+  RMS eccentricity (800 MPs):   1.673671e-02
   Belt geometry:              a = 100, da = 10, a/da = 10
-  Masses:                     M_max = 3.754362e-09 Msun, M_disc = 3.003490e-06 Msun
+  Masses:                     M_indiv = 3.754362e-09 Msun, M_disc = 3.003490e-06 Msun
   Implied stirring timescale: T = 2.548879e+14 yr
-  Effective stirring factor:  C_e = 34.7934  (all MPs, no cut: 34.7934)
-  NOTE: C_e revised 2026-09-30; the values above were recomputed from the final snapshot of the archive (the original report is kept as `SS_800MP_10Myr_1Mearth_uniform_report_original.md`): (1) `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; it now uses the *maximum* massive-planetesimal mass of the sample. (2) RMS(e) now excludes Rayleigh outliers, e > 5 sigma with sigma = median(e)/sqrt(2 ln 2) (bodies scattered by a single strong encounter, e.g. an initially Hill-overlapping pair), applied only once the disk is stirred (median(e) >= 30 x disk.emax); a KS test against a Rayleigh distribution is reported as a diagnostic but does not switch the cut. M and M_disc still use every massive planetesimal. History: C_e = 34.7934 (mean M, all MPs) -> 34.7934 (max M, all MPs) -> 34.7934 (max M, Rayleigh cut; current).
+  Effective stirring factor:  C_e = 34.7934
 Saved archive: outputs/SS_800MP_10Myr_1Mearth_uniform/SS_800MP_10Myr_1Mearth_uniform.bin
 Number of snapshots saved: 1001
 Archive time range: 0.000e+00 yr to 1.000e+07 yr
