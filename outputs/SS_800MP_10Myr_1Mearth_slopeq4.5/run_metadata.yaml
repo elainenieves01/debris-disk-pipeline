@@ -1,0 +1,24 @@
+run_name: SS_800MP_10Myr_1Mearth_slopeq4.5
+run_uuid: 351e0400-aafa-41bb-b829-5a1cc2003e04
+created: '2026-09-25T15:16:17+00:00'
+command: src/simulation/run_simulation.py config/SS_800MP_10Myr_1Mearth_slopeq4.5.yaml
+config:
+  source_path: config/SS_800MP_10Myr_1Mearth_slopeq4.5.yaml
+  frozen_copy: config.yaml
+git:
+  available: false
+software:
+  python: 3.12.14
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: barbieri
+  platform: Linux-5.15.0-185-generic-x86_64-with-glibc2.35
+finished: '2026-09-30T13:14:04+00:00'
+wall_runtime_seconds: 424664.4
+outcome: completed
+initial_particle_count: 801
+final_particle_count: 801
