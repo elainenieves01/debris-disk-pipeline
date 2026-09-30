@@ -413,7 +413,7 @@ _Added retroactively by `calibration/retroactive_kirvov_checks.py`; this run pre
 
 ### Effective stirring constant C_e (Eqs. 9-10, final snapshot)
 
-_C_e note, 2026-09-30: `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; the code was updated to use the *maximum* massive-planetesimal mass of the sample. This run is equal-mass (all MPs have the same mass), so M_max = M_disc / N and the C_e value below is unchanged. (Not recomputed: the archive is not stored locally.)_
+_C_e note, 2026-09-30: (1) `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; it now uses the *maximum* massive-planetesimal mass of the sample. (2) RMS(e) now excludes Rayleigh outliers, e > 5 sigma with sigma = median(e)/sqrt(2 ln 2) (bodies scattered by a single strong encounter, e.g. an initially Hill-overlapping pair), applied only once the disk is stirred (median(e) >= 30 x disk.emax); a KS test against a Rayleigh distribution is reported as a diagnostic but does not switch the cut. M and M_disc still use every massive planetesimal. This run is equal-mass, so change (1) leaves C_e unchanged. Change (2) could not be evaluated because the archive is not stored locally, so the value below still uses every massive planetesimal (no outlier cut)._
 
 - Final time: t = 1.000000e+02 yr
 - RMS eccentricity of the 100 massive planetesimals: 3.851824e-03

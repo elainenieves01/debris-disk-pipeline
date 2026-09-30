@@ -30106,15 +30106,19 @@ _Added retroactively by `calibration/retroactive_kirvov_checks.py`; this run pre
 
 ### Effective stirring constant C_e (Eqs. 9-10, final snapshot)
 
-_C_e regenerated on 2026-09-30: `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; the code was updated to use the *maximum* massive-planetesimal mass of the sample, and the value below was recomputed from the final snapshot of the archive. Previous (mean-mass) value: C_e = 12.1480._
+_C_e revised 2026-09-30, recomputed from the final snapshot of the archive: (1) `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; it now uses the *maximum* massive-planetesimal mass of the sample. (2) RMS(e) now excludes Rayleigh outliers, e > 5 sigma with sigma = median(e)/sqrt(2 ln 2) (bodies scattered by a single strong encounter, e.g. an initially Hill-overlapping pair), applied only once the disk is stirred (median(e) >= 30 x disk.emax); a KS test against a Rayleigh distribution is reported as a diagnostic but does not switch the cut. M and M_disc still use every massive planetesimal. History: C_e = 12.1480 (mean M, all MPs) -> 12.1480 (max M, all MPs) -> 12.1480 (max M, Rayleigh cut; current)._
 
 - Final time: t = 1.000000e+08 yr
-- RMS eccentricity of the 100 massive planetesimals: 1.439656e-01
+- Rayleigh outlier cut: e > 5 sigma = 4.9864e-01 (sigma = median(e)/sqrt(2 ln 2) = 9.9728e-02)
+- Stirred-disk check: median(e) = 1.1742e-01 vs 30 x disk.emax = 9.6000e-04 -> stirred, cut applied
+- Excluded massive planetesimals: 0
+- KS test of kept e vs Rayleigh: D = 0.0607, p = 0.832
+- RMS eccentricity of 100 of 100 massive planetesimals: 1.439656e-01 (all: 1.439656e-01)
 - Belt geometry: a = 100 au, da = 10 au, a/da = 10
 - Masses: M_max (largest MP) = 4.204885e-07 Msun, M_disc = 4.204885e-05 Msun
 - Mean motion at belt centre: Omega = 6.283067e-03 yr^-1
 - Implied stirring timescale: T = 4.655807e+11 yr
-- **Effective stirring constant: C_e = 12.1480** (Ida & Makino 1993 / Krivov & Booth 2018 reference value: 40)
+- **Effective stirring constant: C_e = 12.1480** (Ida & Makino 1993 / Krivov & Booth 2018 reference value: 40; all MPs, no cut: C_e = 12.1480)
 
 ### Stirrer-coverage condition  N x delta_af >= delta_a (initial snapshot)
 

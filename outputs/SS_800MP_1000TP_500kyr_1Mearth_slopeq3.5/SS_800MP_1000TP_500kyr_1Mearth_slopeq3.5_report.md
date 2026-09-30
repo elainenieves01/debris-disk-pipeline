@@ -248,12 +248,16 @@ Total runtime: 2 days, 17 hours, 11 minutes, 56 seconds
 
 Krivov & Booth (2018) self-stirring check (Eqs. 9-10):
   Final time:                 t = 5.000000e+05 yr
-  RMS eccentricity (800 MPs):   1.296967e-02
+  Rayleigh outlier cut:       e > 5 sigma = 4.0131e-02 (sigma = median(e)/sqrt(2 ln 2) = 8.0262e-03)
+  Stirred-disk check:         median(e) = 9.4501e-03 vs 30 x disk.emax = 9.6000e-04 -> stirred, cut applied
+  Excluded MPs:               2 -- MP_335 (e = 0.1647), MP_107 (e = 0.0446)
+  KS test of kept e vs Rayleigh: D = 0.0339, p = 0.312
+  RMS eccentricity (798 of 800 MPs): 1.149475e-02  (all MPs: 1.296967e-02)
   Belt geometry:              a = 100, da = 10, a/da = 10
   Masses:                     M_max = 2.585122e-08 Msun, M_disc = 3.003490e-06 Msun
-  Implied stirring timescale: T = 3.534139e+13 yr
-  Effective stirring factor:  C_e = 36.4433
-  NOTE: C_e regenerated on 2026-09-30: `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; the code was updated to use the *maximum* massive-planetesimal mass of the sample, and the values above were recomputed from the final snapshot of the archive. Previous (mean-mass) value: C_e = 250.9356.
+  Implied stirring timescale: T = 5.727994e+13 yr
+  Effective stirring factor:  C_e = 22.4853  (all MPs, no cut: 36.4433)
+  NOTE: C_e revised 2026-09-30; the values above were recomputed from the final snapshot of the archive: (1) `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; it now uses the *maximum* massive-planetesimal mass of the sample. (2) RMS(e) now excludes Rayleigh outliers, e > 5 sigma with sigma = median(e)/sqrt(2 ln 2) (bodies scattered by a single strong encounter, e.g. an initially Hill-overlapping pair), applied only once the disk is stirred (median(e) >= 30 x disk.emax); a KS test against a Rayleigh distribution is reported as a diagnostic but does not switch the cut. M and M_disc still use every massive planetesimal. History: C_e = 250.9356 (mean M, all MPs) -> 36.4433 (max M, all MPs) -> 22.4853 (max M, Rayleigh cut; current).
 Saved archive: outputs/SS_800MP_1000TP_500kyr_1Mearth_slopeq3.5/SS_800MP_1000TP_500kyr_1Mearth_slopeq3.5.bin
 Number of snapshots saved: 51
 Archive time range: 0.000e+00 yr to 5.000e+05 yr
