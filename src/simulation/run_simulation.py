@@ -19,6 +19,7 @@ from plots import (
     plot_count_histograms,
 )
 from tee_output import start_capturing_stdout, stop_capturing_stdout
+from archive_names import ArchiveNameError, check_archive_names
 from rayleigh_cut import (
     RAYLEIGH_KS_WARN_P,
     STIRRED_MEDIAN_FACTOR,
@@ -1244,6 +1245,21 @@ def run_simulation(config, config_path=None):
     except Exception as error:
         print(f"Could not verify archive: {error}")
 
+    # Every figure and diagnostic identifies bodies by particle name, so check
+    # the names in every snapshot before using the archive (archive_names.py).
+    names_ok = True
+    try:
+        n_checked = check_archive_names(output_file)
+        print(f"Particle-name check: OK ({n_checked} snapshots)")
+        name_check = "ok"
+    except ArchiveNameError as error:
+        names_ok = False
+        name_check = str(error)
+        print(f"\nERROR: particle-name check failed -- {error}")
+        print("Skipping summary figures and report; the archive itself is kept.")
+        send_ntfy(config, f"{sim_name} name check FAILED",
+                  f"{sim_name} finished but its particle-name check failed: {error}")
+
     update_run_metadata(
         run_output_dir,
         finished=now_iso(),
@@ -1251,9 +1267,10 @@ def run_simulation(config, config_path=None):
         outcome="completed",
         initial_particle_count=initial_N,
         final_particle_count=sim.N,
+        archive_name_check=name_check,
     )
 
-    plots_enabled = bool(config.get("plots", {}).get("enabled", False))
+    plots_enabled = bool(config.get("plots", {}).get("enabled", False)) and names_ok
 
     if plots_enabled:
         generate_summary_figures(output_file, config, run_output_dir)

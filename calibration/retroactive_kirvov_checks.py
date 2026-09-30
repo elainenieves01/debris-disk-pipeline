@@ -34,6 +34,7 @@ for _sub in ("simulation", "config_io", "plotting", "diagnostics", "utilities",
 
 import rebound  # noqa: E402
 
+from archive_names import ArchiveNameChecker  # noqa: E402
 from config_utils import read_config  # noqa: E402
 from run_simulation import (  # noqa: E402
     compute_effective_stirring_C_e,
@@ -76,7 +77,11 @@ def first_and_last_snapshots(archive_path):
     the last snapshot.
     """
     sa = rebound.Simulationarchive(str(archive_path))
-    return sa[0], sa[-1], sa.tmin, sa.tmax, len(sa)
+    first, last = sa[0], sa[-1]
+    checker = ArchiveNameChecker(str(archive_path))
+    checker.check(first, 0)
+    checker.check(last, len(sa) - 1)
+    return first, last, sa.tmin, sa.tmax, len(sa)
 
 
 def format_section(run_name, config_note, c_e, cov, tmax):

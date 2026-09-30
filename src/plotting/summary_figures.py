@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 import rebound
 
+from archive_names import ArchiveNameChecker
 from provenance import load_run_metadata, stamp_figure
 from rayleigh_cut import cut_nsigma_from_config, rayleigh_outlier_cut
 
@@ -95,12 +96,18 @@ def build_snapshot_table(archive_path):
     A particle that was removed mid-run (escape, unbound orbit) simply has
     no rows for snapshots after its removal, rather than a placeholder NaN
     row.
+
+    Roles come from particle names, so every snapshot's names are checked
+    first (``archive_names.ArchiveNameChecker``); ArchiveNameError is raised
+    rather than building a table with misidentified bodies.
     """
     sa = rebound.Simulationarchive(str(archive_path))
+    name_checker = ArchiveNameChecker(str(archive_path))
 
     records = []
 
     for snapshot_number, sim in enumerate(sa):
+        name_checker.check(sim, snapshot_number)
         for index in range(sim.N):
             p = sim.particles[index]
             name = p.name or ""

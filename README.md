@@ -123,6 +123,23 @@ integration itself always keeps every body. If the archive is not at
 `outputs/<name>/<name>.bin`, pass `--archive path/to/<name>.bin`. Nothing is
 written if the disk is not stirred or has no outliers.
 
+### Particle-name check
+
+Every figure and diagnostic identifies bodies by particle name (`star`, `GP`,
+`MP_<n>`, `TP_<n>`), and REBOUND 5.0.0 has been seen to read names back wrong
+from small hand-built archives. So every archive reader checks the names
+first (`src/utilities/archive_names.py`): each snapshot must have `star`
+first, unique well-formed names, the first snapshot's names in the same order
+(some may be removed), and each name must keep its mass (unless collisions are
+on). A run whose archive fails the check still completes and keeps its
+archive, but skips its figures and report, records the failure as
+`archive_name_check` in `run_metadata.yaml` and sends a notification. To check
+archives by hand (exit status 1 if any fail):
+
+```bash
+python src/utilities/archive_names.py outputs/*/*.bin
+```
+
 ## Simulation log
 
 `simulation_log.csv` (repo root) has one row per simulation sent out, in
