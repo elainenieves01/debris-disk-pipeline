@@ -796,6 +796,10 @@ def compute_effective_stirring_C_e(sim, config):
     the total mass in stirrers -- exactly the terms formed in
     ``calibration/plot_kirvov_calibration.py`` (``krivov_rms_e``).
 
+    For a size distribution, stirring is dominated by the largest bodies, so M
+    is taken as the maximum massive-planetesimal mass in the sample (for
+    equal-mass runs this equals Mdisc / N, as in the calibration script).
+
     Measures RMS(e) of the massive planetesimals at the current ``sim`` state
     (orbits relative to the star, matching ``src/plotting/summary_figures.py``),
     inverts Eq. 10 for T, then Eq. 9 for C_e. Returns a dict of the ingredients
@@ -817,7 +821,7 @@ def compute_effective_stirring_C_e(sim, config):
     rms_e = float(np.sqrt(np.mean(e_sq)))
 
     m_disc = float(sum(sim.particles[k].m for k in mp_indices))  # Msun
-    m_indiv = m_disc / n_mp                                      # Msun
+    m_max = float(max(sim.particles[k].m for k in mp_indices))   # Msun, largest stirrer
 
     _, _, a_belt, da_belt, Mstar = _belt_geometry(config)
     omega = float(np.sqrt(sim.G * Mstar / a_belt ** 3))  # mean motion at belt centre
@@ -828,7 +832,7 @@ def compute_effective_stirring_C_e(sim, config):
     # Invert Eq. 9 for C_e.
     c_e = (
         2.0 * np.pi * t_inv
-        / (omega * (a_belt / da_belt) * (m_indiv / Mstar) * (m_disc / Mstar))
+        / (omega * (a_belt / da_belt) * (m_max / Mstar) * (m_disc / Mstar))
     )
 
     return {
@@ -839,7 +843,7 @@ def compute_effective_stirring_C_e(sim, config):
         "da_belt": da_belt,
         "a_over_da": a_belt / da_belt,
         "Mstar": Mstar,
-        "m_indiv": m_indiv,
+        "m_max": m_max,
         "m_disc": m_disc,
         "omega": omega,
         "T": float(1.0 / t_inv),
@@ -871,7 +875,7 @@ def report_effective_stirring_C_e(sim, config):
             f"da = {r['da_belt']:g}, a/da = {r['a_over_da']:g}"
         )
         print(
-            f"  Masses:                     M_indiv = {r['m_indiv']:.6e} Msun, "
+            f"  Masses:                     M_max = {r['m_max']:.6e} Msun, "
             f"M_disc = {r['m_disc']:.6e} Msun"
         )
         print(f"  Implied stirring timescale: T = {r['T']:.6e} yr")

@@ -133,9 +133,10 @@ Krivov & Booth (2018) self-stirring check (Eqs. 9-10):
   Final time:                 t = 2.000000e+04 yr
   RMS eccentricity (800 MPs):   2.367946e-05
   Belt geometry:              a = 100, da = 10, a/da = 10
-  Masses:                     M_indiv = 1.801738e-12 Msun, M_disc = 1.441390e-09 Msun
+  Masses:                     M_max = 5.670767e-12 Msun, M_disc = 1.441390e-09 Msun
   Implied stirring timescale: T = 1.272252e+23 yr
-  Effective stirring factor:  C_e = 0.3027
+  Effective stirring factor:  C_e = 0.0962
+  NOTE: C_e regenerated on 2026-09-30: `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; the code was updated to use the *maximum* massive-planetesimal mass of the sample, and the values above were recomputed from the final snapshot of the archive. Previous (mean-mass) value: C_e = 0.3027.
 Saved archive: outputs/SmokeTest_800MP_slopeq3/SmokeTest_800MP_slopeq3.bin
 Number of snapshots saved: 11
 Archive time range: 0.000e+00 yr to 2.000e+04 yr

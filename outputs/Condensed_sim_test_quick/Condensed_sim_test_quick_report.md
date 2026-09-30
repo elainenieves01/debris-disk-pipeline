@@ -413,10 +413,12 @@ _Added retroactively by `calibration/retroactive_kirvov_checks.py`; this run pre
 
 ### Effective stirring constant C_e (Eqs. 9-10, final snapshot)
 
+_C_e note, 2026-09-30: `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; the code was updated to use the *maximum* massive-planetesimal mass of the sample. This run is equal-mass (all MPs have the same mass), so M_max = M_disc / N and the C_e value below is unchanged. (Not recomputed: the archive is not stored locally.)_
+
 - Final time: t = 1.000000e+02 yr
 - RMS eccentricity of the 100 massive planetesimals: 3.851824e-03
 - Belt geometry: a = 1 au, da = 0.1 au, a/da = 10
-- Masses: M_indiv = 8.409771e-09 Msun, M_disc = 8.409771e-07 Msun
+- Masses: M_max (largest MP) = 8.409771e-09 Msun, M_disc = 8.409771e-07 Msun
 - Mean motion at belt centre: Omega = 6.283067e+00 yr^-1
 - Implied stirring timescale: T = 9.085826e+11 yr
 - **Effective stirring constant: C_e = 15.5624** (Ida & Makino 1993 / Krivov & Booth 2018 reference value: 40)

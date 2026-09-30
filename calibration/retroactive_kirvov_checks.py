@@ -107,7 +107,7 @@ def format_section(run_name, config_note, c_e, cov, tmax):
             f"{c_e['rms_e']:.6e}",
             f"- Belt geometry: a = {c_e['a_belt']:g} au, da = {c_e['da_belt']:g} au, "
             f"a/da = {c_e['a_over_da']:g}",
-            f"- Masses: M_indiv = {c_e['m_indiv']:.6e} Msun, "
+            f"- Masses: M_max (largest MP) = {c_e['m_max']:.6e} Msun, "
             f"M_disc = {c_e['m_disc']:.6e} Msun",
             f"- Mean motion at belt centre: Omega = {c_e['omega']:.6e} yr^-1",
             f"- Implied stirring timescale: T = {c_e['T']:.6e} yr",

@@ -250,10 +250,11 @@ Krivov & Booth (2018) self-stirring check (Eqs. 9-10):
   Final time:                 t = 5.000000e+05 yr
   RMS eccentricity (800 MPs):   1.870710e-02
   Belt geometry:              a = 100, da = 10, a/da = 10
-  Masses:                     M_indiv = 3.754362e-09 Msun, M_disc = 3.003490e-06 Msun
+  Masses:                     M_max = 2.585122e-08 Msun, M_disc = 3.003490e-06 Msun
   Implied stirring timescale: T = 8.165332e+12 yr
-  Effective stirring factor:  C_e = 1086.1056
-  WARNING: C_e = 1086.1056 >= 40 (Ida & Makino 1993 canonical value) -- this run stirs at or above the analytic self-stirring rate.
+  Effective stirring factor:  C_e = 157.7347
+  WARNING: C_e = 157.7347 >= 40 (Ida & Makino 1993 canonical value) -- this run stirs at or above the analytic self-stirring rate.
+  NOTE: C_e regenerated on 2026-09-30: `compute_effective_stirring_C_e` in `src/simulation/run_simulation.py` previously used the *mean* massive-planetesimal mass (M_disc / N) as the individual stirrer mass M in Krivov & Booth Eq. 9; the code was updated to use the *maximum* massive-planetesimal mass of the sample, and the values above were recomputed from the final snapshot of the archive. Previous (mean-mass) value: C_e = 1086.1056.
 Saved archive: outputs/SS_800MP_500kyr_1Mearth_slopeq3.5/SS_800MP_500kyr_1Mearth_slopeq3.5.bin
 Number of snapshots saved: 51
 Archive time range: 0.000e+00 yr to 5.000e+05 yr
