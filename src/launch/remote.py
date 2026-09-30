@@ -28,6 +28,10 @@ DEFAULT_RSYNC_EXCLUDES = [
     "__pycache__/",
     "*.pyc",
     ".ipynb_checkpoints/",
+    # the run log lives only on the launching machine / GitHub; a remote copy
+    # would just go stale
+    "/simulation_log.csv",
+    "/.simulation_log.lock",
 ]
 
 

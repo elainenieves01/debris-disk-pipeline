@@ -71,6 +71,7 @@ def launch_local(config, config_path):
 
 def dispatch(config, config_path):
     target = (config.get("compute") or {}).get("target", "local")
+    sent_at = run_log.now_iso()  # before the hand-off, so it precedes the run's own start time
 
     if target == "local":
         launch_local(config, config_path)
@@ -82,7 +83,7 @@ def dispatch(config, config_path):
             sys.exit(1)
 
     # only reached when the launch succeeded (failures exit above)
-    run_log.record_launch(config, config_path, target)
+    run_log.record_launch(config, config_path, target, sent_at=sent_at)
 
 
 if __name__ == "__main__":

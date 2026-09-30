@@ -24,6 +24,7 @@ config/generated/*
 !outputs/*/figures/rayleigh_cut_*/excluded_bodies.csv
 # ...and the log of every simulation sent out (src/launch/run_log.py)
 !/simulation_log.csv
+/.simulation_log.lock
 
 # Per-run checkpoint artifact (dump: true). Now written to outputs/<name>/,
 # which is already ignored; this also catches the legacy repo-root location.

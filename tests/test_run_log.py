@@ -156,3 +156,142 @@ def test_legacy_config_summary():
     period = (2.56 ** 3 / (1.28 + 1.26 * 9.5479e-4)) ** 0.5
     assert float(row["dt_yr"]) == pytest_approx(0.1 * period, rel=1e-5)
     assert notes == []
+
+
+# ---- keeping the log current -------------------------------------------------
+
+def _write_metadata(run_dir, **fields):
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "run_metadata.yaml").write_text(yaml.safe_dump(fields))
+
+
+def test_run_updates_its_own_row_on_start_and_finish(tmp_path):
+    run_log.append_row(run_log.make_row(UNIFORM_CONFIG, "", target="local",
+                                        sent_at="2026-09-10T10:00:00-03:00"))
+    run_dir = tmp_path / "outputs" / "pytest_log_uniform"
+
+    _write_metadata(run_dir, run_uuid="u1", created="2026-09-10T10:00:01-03:00")
+    run_log.note_run_event(UNIFORM_CONFIG, "", run_dir)
+    (row,) = run_log.read_log()
+    assert (row["status"], row["run_uuid"]) == ("running", "u1")
+
+    _write_metadata(run_dir, run_uuid="u1", created="2026-09-10T10:00:01-03:00",
+                    outcome="completed", finished="2026-09-10T11:00:01-03:00",
+                    wall_runtime_seconds=3600, final_particle_count=21)
+    run_log.note_run_event(UNIFORM_CONFIG, "", run_dir)
+    (row,) = run_log.read_log()
+    assert (row["status"], row["runtime_hr"]) == ("completed", "1")
+
+
+def test_run_started_without_the_launcher_gets_a_row(tmp_path):
+    run_log.write_log([])
+    run_dir = tmp_path / "outputs" / "pytest_log_uniform"
+    _write_metadata(run_dir, run_uuid="u2", created="2026-09-11T09:00:00-03:00")
+
+    run_log.note_run_event(UNIFORM_CONFIG, "config/x.yaml", run_dir)
+
+    (row,) = run_log.read_log()
+    assert row["status"] == "running"
+    assert "started without launch_simulation.py" in row["notes"]
+
+
+def test_run_event_is_a_no_op_without_a_log(tmp_path):
+    run_dir = tmp_path / "outputs" / "pytest_log_uniform"
+    _write_metadata(run_dir, run_uuid="u3", created="2026-09-11T09:00:00-03:00")
+
+    run_log.note_run_event(UNIFORM_CONFIG, "", run_dir)  # e.g. on a remote copy
+
+    assert not run_log.LOG_PATH.exists()
+
+
+def test_launch_row_matches_a_run_that_started_slightly_before_sent_at():
+    row = run_log.make_row(UNIFORM_CONFIG, "", target="barbieri",
+                           sent_at="2026-09-10T10:00:30+00:00")
+    metadata = {"created": "2026-09-10T10:00:05+00:00"}  # remote clock a bit behind
+    assert run_log.row_for_metadata([row], "pytest_log_uniform", metadata) is row
+
+
+def _sync_with_probe(monkeypatch, probe_text, statuses):
+    names = [f"pytest_sync_{i}" for i in range(len(statuses))]
+    rows = []
+    for name, status in zip(names, statuses):
+        config = copy.deepcopy(UNIFORM_CONFIG)
+        config["simulation"]["name"] = name
+        row = run_log.make_row(config, "", target="barbieri",
+                               sent_at="2026-09-20T10:00:00+00:00")
+        row["status"] = status
+        rows.append(row)
+    run_log.write_log(rows)
+    monkeypatch.setattr(run_log, "known_remotes", lambda: {"barbieri": {
+        "host": "h", "username": "u", "remote_dir": "/r", "ssh_opts": []}})
+
+    class Result:
+        returncode, stdout, stderr = 0, probe_text, ""
+    calls = []
+    monkeypatch.setattr(run_log.subprocess, "run",
+                        lambda cmd, **kw: calls.append((cmd, kw)) or Result())
+    changes = run_log.sync_remote()
+    return {r["run_name"]: r for r in run_log.read_log()}, changes, calls
+
+
+def test_sync_classifies_remote_runs(monkeypatch):
+    now = 1_790_000_000
+    started = "created: '2026-09-20T10:00:10+00:00'\nrun_uuid: x"
+    probe = "\n".join([
+        "=== pytest_sync_0", started, "--- tmux", "alive", "--- archive", str(now - 600),
+        "=== pytest_sync_1", started, "--- tmux", "alive", "--- archive", str(now - 12 * 3600),
+        "=== pytest_sync_2", started, "outcome: completed", "wall_runtime_seconds: 7200",
+        "--- tmux", "gone", "--- archive", str(now - 60),
+        "=== pytest_sync_3", started, "--- tmux", "gone", "--- archive", str(now - 60),
+        "=== pytest_sync_4", "--- tmux", "alive", "--- archive", "none",
+        "=== __now__", str(now),
+    ])
+    rows, changes, calls = _sync_with_probe(
+        monkeypatch, probe, ["running", "running", "running", "running", "launched"])
+
+    assert [rows[f"pytest_sync_{i}"]["status"] for i in range(5)] == [
+        "running", "possibly stalled", "completed", "stopped (no outcome)", "starting"]
+    assert rows["pytest_sync_2"]["runtime_hr"] == "2"
+    assert "archive last written 12.0 h ago" in rows["pytest_sync_1"]["last_checked"]
+    cmd, kw = calls[0]
+    assert "BatchMode=yes" in cmd and "tmux has-session -t =pytest_sync_0" in kw["input"]
+    assert len(changes) == 5
+
+
+def test_sync_leaves_finished_runs_alone(monkeypatch):
+    rows, changes, calls = _sync_with_probe(monkeypatch, "", ["completed"])
+    assert changes == [] and calls == []
+
+
+def test_sync_explains_how_to_connect_when_ssh_needs_a_password(monkeypatch):
+    import pytest
+
+    run_log.write_log([dict(run_log.make_row(UNIFORM_CONFIG, "", target="barbieri"),
+                            status="running")])
+    monkeypatch.setattr(run_log, "known_remotes", lambda: {"barbieri": {
+        "host": "h", "username": "u", "remote_dir": "/r", "ssh_opts": []}})
+
+    class Result:
+        returncode, stdout, stderr = 255, "", "Permission denied"
+    monkeypatch.setattr(run_log.subprocess, "run", lambda cmd, **kw: Result())
+
+    with pytest.raises(SystemExit, match="ssh -fN u@h"):
+        run_log.sync_remote()
+
+
+def test_autocommit_only_touches_the_repo_log(monkeypatch):
+    monkeypatch.setenv(run_log.AUTOCOMMIT_ENV, "1")
+    run_log.write_log([])
+    # LOG_PATH points at a temp file here, so nothing may be committed
+    assert run_log.commit_and_push("test") is False
+
+
+def test_dispatch_stamps_sent_at_before_launching():
+    stamps = []
+    with patch("launch_simulation.launch_local",
+               side_effect=lambda *a: stamps.append(run_log.now_iso())), \
+         patch("run_log.record_launch") as record:
+        launch_simulation.dispatch(UNIFORM_CONFIG, "config/pytest_log.yaml")
+
+    sent_at = record.call_args.kwargs["sent_at"]
+    assert run_log._ts(sent_at) <= run_log._ts(stamps[0])

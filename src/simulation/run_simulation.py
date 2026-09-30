@@ -6,12 +6,13 @@ import sys
 import urllib.request
 
 _SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-for _subdir in ("config_io", "plotting", "diagnostics", "utilities", "mass_models"):
+for _subdir in ("config_io", "plotting", "diagnostics", "utilities", "mass_models", "launch"):
     sys.path.insert(0, os.path.join(_SRC_DIR, "..", _subdir))
 
 from config_utils import read_config
 from summary_figures import generate_summary_figures
 from report import generate_report
+import run_log
 from mass_models import generate_distribution
 from plots import (
     plot_per_particle,
@@ -1098,6 +1099,7 @@ def run_simulation(config, config_path=None):
 
     # Provenance: freeze the config, record git/software/UUID, dump pip freeze.
     capture_run_provenance(config, config_path, run_output_dir)
+    run_log.note_run_event(config, config_path, run_output_dir)
 
     output_file = os.path.join(run_output_dir, f"{sim_name}.bin")
 
@@ -1269,6 +1271,7 @@ def run_simulation(config, config_path=None):
         final_particle_count=sim.N,
         archive_name_check=name_check,
     )
+    run_log.note_run_event(config, config_path, run_output_dir)
 
     plots_enabled = bool(config.get("plots", {}).get("enabled", False)) and names_ok
 
@@ -1320,6 +1323,7 @@ if __name__ == "__main__":
                 finished=now_iso(),
                 error=f"{type(error).__name__}: {error}",
             )
+            run_log.note_run_event(config, config_path, run_output_dir_for(config))
         except Exception:  # noqa: BLE001 - never mask the real error
             pass
         send_ntfy(

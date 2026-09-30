@@ -30,17 +30,35 @@ Commands, for runs that didn't go through the launcher:
     # print the log
     python src/launch/run_log.py show --last 10
 
-Logging never stops a launch: if anything about summarizing the run fails, the
-row is written with what could be read and the error goes in the notes column.
+    # check barbieri's runs over SSH and update their rows (open a shared
+    # login first with `ssh -fN <user>@<host>` if it asks for a password)
+    python src/launch/run_log.py sync
+
+Keeping the log current:
+  * launch_simulation.py adds a row on every successful launch;
+  * run_simulation.py updates its row when the run starts, finishes or fails
+    (runs on this machine only -- a remote copy of the repo has no log), and
+    adds a row if the run was started without the launcher;
+  * `sync` does the same for remote runs, reading their run_metadata.yaml,
+    tmux session and archive timestamp over SSH;
+  * every automatic or command-line change is committed (simulation_log.csv
+    only) and pushed. Set DEBRIS_RUN_LOG_AUTOCOMMIT=0, or pass --no-commit, to
+    skip that.
+
+Logging never stops a launch or a run: if anything fails, a warning is printed
+and the run carries on.
 """
 
 import argparse
 import contextlib
 import copy
 import csv
+import fcntl
 import io
 import os
 import platform
+import shlex
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -50,7 +68,7 @@ import yaml
 
 _SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 for _subdir in ("config_io", "plotting", "diagnostics", "utilities", "mass_models",
-                "simulation"):
+                "simulation", "launch"):
     sys.path.insert(0, os.path.join(_SRC_DIR, "..", _subdir))
 
 from provenance import (  # noqa: E402
@@ -58,9 +76,25 @@ from provenance import (  # noqa: E402
     RUN_METADATA_FILENAME,
     collect_git_info,
 )
+from tmux_utils import sanitize_session_name, session_name_for  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-LOG_PATH = REPO_ROOT / "simulation_log.csv"
+REPO_LOG_PATH = REPO_ROOT / "simulation_log.csv"
+LOG_PATH = REPO_LOG_PATH
+LOCK_NAME = ".simulation_log.lock"
+
+AUTOCOMMIT_ENV = "DEBRIS_RUN_LOG_AUTOCOMMIT"
+
+# Clocks on different machines disagree a little, and the launcher stamps
+# sent_at just before handing off, so a run's own start time can land slightly
+# before or after it. Anything this close counts as the same launch.
+LAUNCH_MATCH_TOLERANCE_S = 600
+
+# A remote run whose archive hasn't been written for this long is flagged.
+STALL_HOURS = 6
+
+# Statuses sync keeps checking; anything else (completed, failed, ...) is final.
+ACTIVE_STATUSES = ("launched", "starting", "running", "possibly stalled")
 
 EARTH_MASS_TO_SOLAR_MASS = 3.0034896149156e-6  # as in run_simulation.py
 
@@ -73,7 +107,7 @@ COLUMNS = [
     "mp_mass_min_earth", "mp_mass_max_earth", "mass_source",
     "giant_planet", "exit_max_distance_AU",
     "status", "finished_at", "runtime_hr", "final_particle_count", "run_uuid",
-    "notes",
+    "last_checked", "notes",
 ]
 
 
@@ -81,8 +115,11 @@ COLUMNS = [
 # Summarizing a config
 # ============================================================
 
-def _now():
+def now_iso():
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+_now = now_iso
 
 
 def _ts(value):
@@ -235,12 +272,66 @@ def write_log(rows, path=None):
             writer.writerow({c: row.get(c, "") for c in COLUMNS})
 
 
-def append_row(row, path=None):
+@contextlib.contextmanager
+def _lock(path):
+    """Exclusive lock beside the log, so concurrent runs don't clobber it."""
+    with open(Path(path).parent / LOCK_NAME, "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
+@contextlib.contextmanager
+def edit_log(path=None):
+    """Yield the log's rows for editing under the lock, then write them back sorted."""
     path = Path(path or LOG_PATH)
-    rows = read_log(path)
-    rows.append(row)
-    rows.sort(key=lambda r: _ts(r.get("sent_at", "")))
-    write_log(rows, path)
+    with _lock(path):
+        rows = read_log(path)
+        yield rows
+        rows.sort(key=lambda r: _ts(r.get("sent_at", "")))
+        write_log(rows, path)
+
+
+def append_row(row, path=None):
+    with edit_log(path) as rows:
+        rows.append(row)
+
+
+def _git(*args, timeout=60):
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")  # never hang on a password prompt
+    return subprocess.run(["git", "-C", str(REPO_ROOT), *args], capture_output=True,
+                          text=True, timeout=timeout, env=env)
+
+
+def commit_and_push(message, path=None):
+    """
+    Commit simulation_log.csv (and nothing else) and push it. Only touches the
+    repo's own log, skipped when DEBRIS_RUN_LOG_AUTOCOMMIT=0 or outside a git
+    checkout, and never raises. Returns True if a commit was made.
+    """
+    path = Path(path or LOG_PATH)
+    if (os.environ.get(AUTOCOMMIT_ENV, "1") == "0"
+            or path.resolve() != REPO_LOG_PATH.resolve()
+            or not (REPO_ROOT / ".git").exists()):
+        return False
+    rel = REPO_LOG_PATH.name
+    try:
+        with _lock(path):
+            if _git("diff", "--quiet", "HEAD", "--", rel).returncode == 0:
+                return False
+            commit = _git("commit", "--only", "-m", message, "--", rel)
+            if commit.returncode != 0:
+                print(f"(run log not committed: {commit.stderr.strip() or commit.stdout.strip()})",
+                      file=sys.stderr)
+                return False
+        push = _git("push", timeout=120)
+        if push.returncode != 0:
+            print("(run log committed but not pushed -- run `git push` later: "
+                  f"{push.stderr.strip().splitlines()[-1] if push.stderr.strip() else 'push failed'})",
+                  file=sys.stderr)
+        return True
+    except Exception as error:
+        print(f"(run log not committed: {type(error).__name__}: {error})", file=sys.stderr)
+        return False
 
 
 def make_row(config, config_path, *, target, sent_at=None, launched_from=None,
@@ -271,12 +362,13 @@ def _repo_relative(path):
         return str(path)
 
 
-def record_launch(config, config_path, target, path=None):
-    """Append a row for a launch that just succeeded. Never raises."""
+def record_launch(config, config_path, target, sent_at=None, path=None):
+    """Append (and commit) a row for a launch that just succeeded. Never raises."""
     try:
-        row = make_row(config, config_path, target=target)
+        row = make_row(config, config_path, target=target, sent_at=sent_at)
         append_row(row, path)
         print(f"Logged launch in {_repo_relative(path or LOG_PATH)}")
+        commit_and_push(f"Run log: launched {row['run_name']} on {target}", path)
     except Exception as error:
         print(f"(run log not updated: {type(error).__name__}: {error})", file=sys.stderr)
 
@@ -307,31 +399,74 @@ def _outcome_fields(metadata):
     return fields
 
 
+def row_for_metadata(rows, name, metadata):
+    """
+    The launch row a run_metadata.yaml belongs to: the latest row for that
+    run name sent no later than the run started (give or take clock skew).
+    """
+    if not metadata or not metadata.get("created"):
+        return None
+    created = _ts(metadata["created"]).timestamp()
+    candidates = [r for r in rows if r["run_name"] == name
+                  and _ts(r.get("sent_at", "")).timestamp()
+                  <= created + LAUNCH_MATCH_TOLERANCE_S]
+    return max(candidates, key=lambda r: _ts(r["sent_at"])) if candidates else None
+
+
 def refresh(outputs_dir, path=None):
     """Fill outcome fields for logged runs whose outputs/<name>/ is here."""
-    rows = read_log(path)
     updated = 0
-    for name in {r["run_name"] for r in rows}:
-        metadata = _load_yaml(Path(outputs_dir) / name / RUN_METADATA_FILENAME)
-        if not metadata or not metadata.get("created"):
-            continue
-        created = _ts(metadata["created"])
-        # the launch that produced this metadata: latest one sent before it started
-        candidates = [r for r in rows if r["run_name"] == name
-                      and _ts(r.get("sent_at", "")) <= created]
-        if not candidates:
-            continue
-        row = max(candidates, key=lambda r: _ts(r["sent_at"]))
-        before = dict(row)
-        row.update(_outcome_fields(metadata))
-        updated += row != before
-    write_log(rows, path)
+    with edit_log(path) as rows:
+        for name in {r["run_name"] for r in rows}:
+            metadata = _load_yaml(Path(outputs_dir) / name / RUN_METADATA_FILENAME)
+            row = row_for_metadata(rows, name, metadata)
+            if row is None:
+                continue
+            before = dict(row)
+            row.update(_outcome_fields(metadata))
+            updated += row != before
     return updated
+
+
+def note_run_event(config, config_path, run_output_dir, path=None):
+    """
+    Called by run_simulation.py when a run starts, finishes or fails: update
+    its row from run_metadata.yaml (adding one if it was started without the
+    launcher) and commit it. Only acts where the log exists in a git checkout
+    -- i.e. not in a remote copy of the repo. Never raises.
+    """
+    path = Path(path or LOG_PATH)
+    try:
+        if not path.exists() or not (REPO_ROOT / ".git").exists():
+            return
+        metadata = _load_yaml(Path(run_output_dir) / RUN_METADATA_FILENAME)
+        if not metadata:
+            return
+        name = config["simulation"]["name"]
+        with edit_log(path) as rows:
+            row = row_for_metadata(rows, name, metadata)
+            if row is None:
+                row = make_row(config, config_path, target=f"local ({platform.node()})",
+                               sent_at=str(metadata.get("created", "")),
+                               note="started without launch_simulation.py")
+                rows.append(row)
+            row.update(_outcome_fields(metadata))
+            if not metadata.get("outcome"):
+                row["status"] = "running"
+            row["last_checked"] = f"{_now()}: run reported {row['status']}"
+            status = row["status"]
+        commit_and_push(f"Run log: {name} {status}", path)
+    except Exception as error:
+        print(f"(run log not updated: {type(error).__name__}: {error})", file=sys.stderr)
 
 
 def backfill(outputs_dir, path=None):
     """Add a row for every outputs/<name>/run_metadata.yaml not yet logged."""
-    rows = read_log(path)
+    with edit_log(path) as rows:
+        return _backfill_rows(rows, outputs_dir)
+
+
+def _backfill_rows(rows, outputs_dir):
     logged = {r.get("run_uuid") for r in rows if r.get("run_uuid")}
     added = []
     for meta_path in sorted(Path(outputs_dir).glob(f"*/{RUN_METADATA_FILENAME}")):
@@ -353,8 +488,6 @@ def backfill(outputs_dir, path=None):
         row.update(_outcome_fields(metadata))
         rows.append(row)
         added.append(row["run_name"])
-    rows.sort(key=lambda r: _ts(r.get("sent_at", "")))
-    write_log(rows, path)
     return added
 
 
@@ -439,7 +572,11 @@ def _git_out(repo, *args):
 def log_legacy_repo(repo, ref="origin/main", path=None):
     """Log every config/*.yaml at `ref` of the legacy repo as unconfirmed."""
     repo = Path(repo).expanduser()
-    rows = read_log(path)
+    with edit_log(path) as rows:
+        return _legacy_rows(rows, repo, ref)
+
+
+def _legacy_rows(rows, repo, ref):
     logged = {r.get("config") for r in rows}
     added = []
     names = _git_out(repo, "ls-tree", "--name-only", ref, "config/").splitlines()
@@ -457,9 +594,156 @@ def log_legacy_repo(repo, ref="origin/main", path=None):
                    notes="; ".join(notes))
         rows.append(row)
         added.append(row["run_name"])
-    rows.sort(key=lambda r: _ts(r.get("sent_at", "")))
-    write_log(rows, path)
     return added
+
+
+# ============================================================
+# Remote runs
+# ============================================================
+
+def known_remotes():
+    """compute.remotes entries found across config/*.yaml, by name."""
+    import remote  # launcher module; imported here to keep run_log light
+
+    found = {}
+    for config_path in sorted((REPO_ROOT / "config").glob("*.yaml")):
+        config = _load_yaml(config_path) or {}
+        for name in ((config.get("compute") or {}).get("remotes") or {}):
+            if name not in found:
+                found[name] = remote._remote_cfg(config, name)
+    return found
+
+
+def _session_for_row(row):
+    config = _load_yaml(REPO_ROOT / row["config"]) if row.get("config") else None
+    if config and (config.get("simulation") or {}).get("name") == row["run_name"]:
+        return session_name_for(config)
+    return sanitize_session_name(row["run_name"])
+
+
+def _probe_script(remote_dir, runs):
+    """Shell script printing each run's metadata, tmux state and archive mtime."""
+    outputs = shlex.quote(remote_dir.rstrip("/") + "/outputs")
+    lines = [f"cd {outputs} 2>/dev/null || {{ echo '=== __no_outputs__'; exit 0; }}"]
+    for name, session in runs:
+        q = shlex.quote(name)
+        lines.append(
+            f"echo '=== '{q}; cat {q}/{RUN_METADATA_FILENAME} 2>/dev/null; "
+            f"echo '--- tmux'; tmux has-session -t ={shlex.quote(session)} 2>/dev/null "
+            f"&& echo alive || echo gone; "
+            f"echo '--- archive'; stat -c %Y {q}/{q}.bin 2>/dev/null || echo none"
+        )
+    lines.append("echo '=== __now__'; date +%s")
+    return "\n".join(lines)
+
+
+def _parse_probe(text):
+    """{name: {"metadata": dict|None, "tmux": str, "archive": int|None}}, remote now."""
+    runs, now, name, section, buf = {}, None, None, None, []
+
+    def flush():
+        if name is None or name.startswith("__"):
+            return
+        entry = runs.setdefault(name, {"metadata": None, "tmux": "gone", "archive": None})
+        body = "\n".join(buf).strip()
+        if section is None and body:
+            try:
+                data = yaml.safe_load(body)
+                entry["metadata"] = data if isinstance(data, dict) else None
+            except yaml.YAMLError:
+                pass
+        elif section == "tmux":
+            entry["tmux"] = body or "gone"
+        elif section == "archive":
+            entry["archive"] = int(body) if body.isdigit() else None
+
+    for line in text.splitlines():
+        if line.startswith("=== "):
+            flush()
+            name, section, buf = line[4:].strip(), None, []
+        elif line.startswith("--- "):
+            flush()
+            section, buf = line[4:].strip(), []
+        else:
+            if name == "__now__" and line.strip().isdigit():
+                now = int(line.strip())
+            buf.append(line)
+    flush()
+    return runs, now
+
+
+def _remote_status(row, probe, remote_now):
+    """(fields to set, human-readable check) for one row from its probe result."""
+    metadata = probe.get("metadata")
+    alive = probe.get("tmux") == "alive"
+    started = (metadata and metadata.get("created")
+               and row_for_metadata([row], row["run_name"], metadata) is row)
+    if started:
+        fields = _outcome_fields(metadata)
+        if metadata.get("outcome"):
+            return fields, f"finished ({metadata['outcome']})"
+        if alive:
+            if probe.get("archive") and remote_now:
+                age_h = (remote_now - probe["archive"]) / 3600
+                fields["status"] = "possibly stalled" if age_h > STALL_HOURS else "running"
+                return fields, f"tmux alive, archive last written {age_h:.1f} h ago"
+            fields["status"] = "running"
+            return fields, "tmux alive, no archive written yet"
+        fields["status"] = "stopped (no outcome)"
+        return fields, "tmux session gone and no outcome recorded -- killed or crashed?"
+    if alive:
+        return {"status": "starting"}, "tmux alive, run_metadata.yaml not written yet"
+    return {}, "no run_metadata.yaml for this launch and no tmux session"
+
+
+def _clean_manual_notes(notes):
+    """Drop the one-off status notes written before sync existed."""
+    parts = [p for p in notes.split("; ") if p and "tmux session alive" not in p]
+    return "; ".join(parts)
+
+
+def sync_remote(target=None, path=None):
+    """
+    Check every active remote row over SSH and update its status. Uses SSH
+    BatchMode, so it relies on an existing shared connection or key -- it never
+    prompts. Returns a list of (run_name, old_status, new_status, check).
+    """
+    remotes = known_remotes()
+    rows = read_log(path)
+    active = [r for r in rows if r.get("status") in ACTIVE_STATUSES
+              and r.get("target") in remotes and (target is None or r["target"] == target)]
+    changes = []
+    for name in sorted({r["target"] for r in active}):
+        remote_cfg = remotes[name]
+        runs = sorted({(r["run_name"], _session_for_row(r)) for r in active
+                       if r["target"] == name})
+        user_host = f"{remote_cfg['username']}@{remote_cfg['host']}"
+        cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
+               *remote_cfg["ssh_opts"], user_host, "bash", "-s"]
+        result = subprocess.run(cmd, input=_probe_script(remote_cfg["remote_dir"], runs),
+                                capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise SystemExit(
+                f"could not reach {name} ({user_host}) without a password: "
+                f"{result.stderr.strip()}\nOpen a shared login first, then rerun sync:\n"
+                f"  ssh -fN {user_host}"
+            )
+        probes, remote_now = _parse_probe(result.stdout)
+        checked_at = _now()
+        with edit_log(path) as live_rows:
+            for row in live_rows:
+                if row.get("target") != name or row.get("status") not in ACTIVE_STATUSES:
+                    continue
+                if (row["run_name"], _session_for_row(row)) not in runs:
+                    continue
+                fields, check = _remote_status(row, probes.get(row["run_name"], {}),
+                                               remote_now)
+                old = row.get("status", "")
+                row.update(fields)
+                row["last_checked"] = f"{checked_at} ({name}): {check}"
+                row["notes"] = _clean_manual_notes(row.get("notes", ""))
+                changes.append((row["run_name"], old, row.get("status", ""), check))
+    return changes
 
 
 # ============================================================
@@ -489,6 +773,8 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description="Log of every simulation sent out.")
     p.add_argument("--log", default=None,
                    help=f"log file (default: {LOG_PATH.relative_to(REPO_ROOT)})")
+    p.add_argument("--no-commit", action="store_true",
+                   help="don't commit and push the log after changing it")
     sub = p.add_subparsers(dest="command", required=True)
 
     add = sub.add_parser("add", help="log a run that didn't go through the launcher")
@@ -507,6 +793,9 @@ def parse_args(argv=None):
     leg.add_argument("repo", help="path to the legacy repo checkout")
     leg.add_argument("--ref", default="origin/main")
 
+    sy = sub.add_parser("sync", help="check remote runs over SSH and update their rows")
+    sy.add_argument("--target", default=None, help="only this remote (default: all)")
+
     sh = sub.add_parser("show", help="print the log")
     sh.add_argument("--last", type=int, default=None)
 
@@ -517,7 +806,13 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
+    message = _run_command(args)
+    if message and not args.no_commit:
+        commit_and_push(message, args.log)
 
+
+def _run_command(args):
+    """Run one CLI command; returns a commit message if the log changed."""
     if args.command == "add":
         config = _load_yaml(args.config)
         if config is None:
@@ -530,16 +825,30 @@ def main(argv=None):
                        note=args.note or "logged by hand")
         append_row(row, args.log)
         print(f"Logged {row['run_name']} ({target}, sent {row['sent_at']})")
-    elif args.command == "backfill":
+        return f"Run log: add {row['run_name']}"
+    if args.command == "backfill":
         added = backfill(args.outputs, args.log)
         print(f"Backfilled {len(added)} run(s): {', '.join(added) or 'none'}")
-    elif args.command == "refresh":
-        print(f"Updated {refresh(args.outputs, args.log)} run(s)")
-    elif args.command == "legacy":
+        return f"Run log: backfill {len(added)} run(s)" if added else None
+    if args.command == "refresh":
+        updated = refresh(args.outputs, args.log)
+        print(f"Updated {updated} run(s)")
+        return f"Run log: refresh {updated} run(s)" if updated else None
+    if args.command == "legacy":
         added = log_legacy_repo(args.repo, args.ref, args.log)
         print(f"Logged {len(added)} legacy config(s): {', '.join(added) or 'none'}")
-    elif args.command == "show":
+        return f"Run log: {len(added)} legacy config(s)" if added else None
+    if args.command == "sync":
+        changes = sync_remote(args.target, args.log)
+        for name, old, new, check in changes:
+            arrow = f"{old} -> {new}" if old != new else new
+            print(f"  {name:40s} {arrow:32s} {check}")
+        moved = sum(old != new for _, old, new, _ in changes)
+        print(f"Checked {len(changes)} run(s); {moved} changed status")
+        return f"Run log: sync ({moved} status change(s))" if changes else None
+    if args.command == "show":
         show(args.log, args.last)
+    return None
 
 
 if __name__ == "__main__":
