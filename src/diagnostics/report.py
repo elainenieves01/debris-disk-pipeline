@@ -218,6 +218,11 @@ def generate_report(config, config_path, archive_path, output_path, terminal_out
 
     lines.append("## Disk")
     lines.append(f"- a: [{disk_cfg['amin']}, {disk_cfg['amax']}] au")
+    if disk_cfg.get("a_distribution", "uniform") == "lorentzian":
+        lines.append(
+            f"- a distribution: Lorentzian in ln a, mu_0 = {disk_cfg['a_center']} au, "
+            f"sigma = {disk_cfg['a_sigma']} au"
+        )
     lines.append(f"- e: [{disk_cfg['emin']}, {disk_cfg['emax']}]")
     lines.append(f"- inc: [{disk_cfg['imin_deg']}, {disk_cfg['imax_deg']}] deg")
     if disk_cfg.get("M_deg") is not None:

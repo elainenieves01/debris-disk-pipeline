@@ -21,6 +21,7 @@ from plots import (
 )
 from tee_output import start_capturing_stdout, stop_capturing_stdout
 from archive_names import ArchiveNameError, check_archive_names
+from semimajor_axis import SemimajorAxisSampler
 from rayleigh_cut import (
     RAYLEIGH_KS_WARN_P,
     STIRRED_MEDIAN_FACTOR,
@@ -356,6 +357,7 @@ def build_simulation(config):
 
     amin = float(disk["amin"])
     amax = float(disk["amax"])
+    a_sampler = SemimajorAxisSampler(disk)
 
     emin = float(disk["emin"])
     emax = float(disk["emax"])
@@ -438,6 +440,8 @@ def build_simulation(config):
         )
 
     sim.dt = choose_timestep(sim, config, has_giant_planet, Mstar, amin)
+
+    print(f"\nDisk semimajor axes: {a_sampler.describe()}")
 
     # Massive planetesimals
     # ---------------------
@@ -692,7 +696,7 @@ def build_simulation(config):
             sim.add(
                 primary=sim.particles[0],
                 m=float(mp_masses[i]),
-                a=rng.uniform(amin, amax),
+                a=a_sampler.draw(rng),
                 e=rng.uniform(emin, emax),
                 inc=rng.uniform(imin, imax),
                 omega=rng.uniform(0,2*np.pi),
@@ -727,7 +731,7 @@ def build_simulation(config):
         sim.add(
             primary=sim.particles[0],
             m=0.0,
-            a=rng.uniform(amin, amax),
+            a=a_sampler.draw(rng),
             e=rng.uniform(emin, emax),
             inc=rng.uniform(imin, imax),
             omega=rng.uniform(0,2*np.pi),

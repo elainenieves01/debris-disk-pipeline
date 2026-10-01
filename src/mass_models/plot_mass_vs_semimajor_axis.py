@@ -19,6 +19,8 @@ Example:
 """
 
 import argparse
+import os
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -32,16 +34,22 @@ import yaml
 
 from reference_bodies import add_mass_references
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "utilities"))
+from semimajor_axis import SemimajorAxisSampler  # noqa: E402
+
 SIM_SEED = 42  # hardcoded in run_simulation.build_simulation
 DRAWS_PER_BODY = 6  # a, e, inc, omega, Omega, M
 
 
-def semimajor_axes(n, amin, amax, emax, imax, seed=SIM_SEED):
+def semimajor_axes(n, disk, seed=SIM_SEED):
     """Initial a (AU) of each planetesimal, as run_simulation draws them."""
+    sampler = SemimajorAxisSampler(disk)
+    emax = float(disk["emax"])
+    imax = np.radians(float(disk["imax_deg"]))
     rng = np.random.default_rng(seed)
     a = np.empty(n)
     for i in range(n):
-        a[i] = rng.uniform(amin, amax)
+        a[i] = sampler.draw(rng)
         rng.uniform(0.0, emax)
         rng.uniform(0.0, imax)
         rng.uniform(0, 2 * np.pi, size=3)
@@ -66,8 +74,7 @@ def main(argv=None):
     n = n.pop()
 
     disk = yaml.safe_load(open(args.config))["disk"]
-    a = semimajor_axes(n, float(disk["amin"]), float(disk["amax"]),
-                       float(disk["emax"]), np.radians(float(disk["imax_deg"])))
+    a = semimajor_axes(n, disk)
 
     q_max, df_max = max(sets.items(), key=lambda kv: kv[1]["mass_earth"].max())
     i_max = int(df_max["mass_earth"].idxmax())
