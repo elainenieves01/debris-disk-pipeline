@@ -47,6 +47,11 @@ PLUTO_MASS_TO_SOLAR_MASS = 6.55135e-9
 SOLAR_MASS_G = 1.98892e33
 PLUTO_DIAMETER_KM = 2376.6  # Stern et al. 2015 (New Horizons)
 
+# Set to "1" by the launchers (local tmux and scripts/remote/launch_tmux.sh):
+# a detached tmux session has a TTY but nobody watching it, so an input()
+# prompt there would stall the run until someone attaches.
+UNATTENDED_ENV = "DEBRIS_UNATTENDED"
+
 
 def dump_path_for(config):
     """Path to a run's resume snapshot, inside its own output directory.
@@ -1032,7 +1037,8 @@ def compute_stirrer_disk_coverage(sim, config):
 def check_stirrer_disk_coverage(sim, config):
     """Run ``compute_stirrer_disk_coverage``; on failure WARN and, when stdin is
     a TTY, pause and ask whether to continue (aborting on anything but yes). In a
-    non-interactive session it prints the warning and continues.
+    non-interactive session, or an unattended launcher run (DEBRIS_UNATTENDED=1),
+    it prints the warning and continues.
     """
     r = compute_stirrer_disk_coverage(sim, config)
     if r is None:
@@ -1061,6 +1067,13 @@ def check_stirrer_disk_coverage(sim, config):
         "The Krivov & Booth (2018) self-stirring picture assumes the stirrers "
         "can dynamically reach across the whole disk width."
     )
+
+    if os.environ.get(UNATTENDED_ENV) == "1":
+        print(
+            f"  Unattended launch ({UNATTENDED_ENV}=1): continuing anyway "
+            "(nobody is watching the tmux session to answer a prompt)."
+        )
+        return
 
     if not sys.stdin.isatty():
         print(

@@ -18,7 +18,9 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$ENV_NAME"
 
 cd "$REMOTE_DIR"
+# DEBRIS_UNATTENDED=1: nobody is watching the detached session, so
+# run_simulation.py must warn and continue rather than stop at a prompt.
 tmux new-session -d -s "$SESSION" \
-  "python -u src/simulation/run_simulation.py '$CONFIG_PATH'; ec=\$?; echo; echo \"[finished, exit \$ec]\"; exit \$ec"
+  "DEBRIS_UNATTENDED=1 python -u src/simulation/run_simulation.py '$CONFIG_PATH'; ec=\$?; echo; echo \"[finished, exit \$ec]\"; exit \$ec"
 
 echo "[launch] started tmux session '$SESSION' on $(hostname)"

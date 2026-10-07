@@ -130,6 +130,8 @@ def test_launch_local_starts_new_tmux_session_when_none_running():
 
     cmd = mock_run.call_args.args[0]
     assert cmd[:5] == ["tmux", "new-session", "-d", "-s", "pytest_local"]
+    # Nobody watches a detached session, so run_simulation must not prompt.
+    assert cmd[-1].startswith("DEBRIS_UNATTENDED=1 ")
 
 
 def test_launch_local_refuses_duplicate_session():

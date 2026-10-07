@@ -51,7 +51,7 @@ def launch_local(config, config_path):
 
     config_abs_path = str(Path(config_path).resolve())
     inner_command = (
-        f"{sys.executable} -u {RUN_SIMULATION_SCRIPT} '{config_abs_path}'; "
+        f"DEBRIS_UNATTENDED=1 {sys.executable} -u {RUN_SIMULATION_SCRIPT} '{config_abs_path}'; "
         f'ec=$?; echo; echo "[finished, exit $ec]"; exit $ec'
     )
     result = subprocess.run(
