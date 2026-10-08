@@ -1,7 +1,8 @@
 """Rebuild the debris-disk Blender scene from scratch.
 
-Scene: black background, pale emissive star, low-poly asteroids in an
-off-centre (eccentric) disk, orbiting with motion blur.
+Scene: black background, warm emissive star, low-poly asteroids in a
+disk centred on the star, orbiting with motion blur. Set disk_offset in
+CONFIG to shift the disk off-centre.
 
 Usage (headless, writes the .blend and optionally renders a still):
     blender --background --python blender/build_scene.py -- \
@@ -24,10 +25,10 @@ CONFIG = dict(
     n_asteroids=2500,
     n_rings=48,               # asteroids share a pivot per ring (cheap Keplerian shear)
     a_min=6.0, a_max=11.0,    # disk radial extent (Blender units)
-    disk_offset=(1.6, 0.0, 0.0),  # disk centre offset from the star (forced eccentricity)
+    disk_offset=(0.0, 0.0, 0.0),  # disk centre offset from the star; (0,0,0) = centred on the star
     height_frac=0.04,         # vertical scale height as a fraction of a
     star_radius=0.9,
-    star_color=(1.0, 0.93, 0.80, 1.0),   # pale yellow-white
+    star_color=(1.0, 0.72, 0.38, 1.0),   # warm orange-yellow
     star_strength=12.0,
     asteroid_size=(0.03, 0.10),
     asteroid_color=(0.35, 0.31, 0.28, 1.0),
