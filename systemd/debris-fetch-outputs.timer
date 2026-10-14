@@ -1,0 +1,16 @@
+[Unit]
+Description=Hourly copy of finished barbieri runs (debris-fetch-outputs.service)
+
+# Install as a user unit on the work computer:
+#   cp systemd/debris-fetch-outputs.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now debris-fetch-outputs.timer
+#   loginctl enable-linger elaines    # keep it running while logged out
+# Run now:  systemctl --user start debris-fetch-outputs.service
+# Log:      journalctl --user -u debris-fetch-outputs.service
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hourly copy of finished barbieri runs into this Mac's outputs/
+  (src/launch/fetch_outputs.py). Paths are this Mac's.
+
+  Install / reload:
+    cp launchd/com.elainenieves.debris-fetch-outputs.plist ~/Library/LaunchAgents/
+    launchctl bootout gui/$(id -u)/com.elainenieves.debris-fetch-outputs 2>/dev/null
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.elainenieves.debris-fetch-outputs.plist
+  Run now:   launchctl kickstart gui/$(id -u)/com.elainenieves.debris-fetch-outputs
+  Log:       logs/fetch_outputs.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.elainenieves.debris-fetch-outputs</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/elainenieves/opt/anaconda3/envs/debris_pipeline/bin/python</string>
+    <string>-u</string>
+    <string>src/launch/fetch_outputs.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/elainenieves/debris-disk-pipeline</string>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/elainenieves/debris-disk-pipeline/logs/fetch_outputs.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/elainenieves/debris-disk-pipeline/logs/fetch_outputs.log</string>
+</dict>
+</plist>

@@ -269,6 +269,34 @@ like Slurm or PBS instead — running against policy risks the job being
 killed by a resource monitor. Job-scheduler submission support can be added
 here later if your cluster requires it.
 
+### Copying finished runs back: `fetch_outputs.py`
+
+`src/launch/fetch_outputs.py` copies every finished remote run's
+`outputs/<name>/` folder (the `.bin` included) into this checkout's `outputs/`.
+Each machine that runs it keeps its own copy, so a lost machine doesn't take
+the archives with it.
+
+```bash
+python src/launch/fetch_outputs.py --dry-run   # list what it would copy
+python src/launch/fetch_outputs.py             # copy it
+```
+
+A run is copied once its remote `run_metadata.yaml` records an outcome, and
+again if the local `.bin` is missing or a different size (git tracks a run's
+reports and metadata but not its archive). A local folder holding a
+*different* run of the same name is never overwritten. It doesn't touch git or
+`simulation_log.csv`, so it can run unattended on several machines.
+
+It never prompts, so each machine needs an SSH key registered on the remote
+once (`ssh-copy-id elaine.nieves@10.16.39.111`, entering the password one
+last time). Then schedule it hourly:
+
+- **This Mac** — `launchd/com.elainenieves.debris-fetch-outputs.plist`
+  (install commands in the file); log in `logs/fetch_outputs.log`.
+- **Work computer** — `systemd/debris-fetch-outputs.{service,timer}` as user
+  units (install commands in the `.timer`); log via
+  `journalctl --user -u debris-fetch-outputs`.
+
 ### Surviving a crash or power outage
 
 With `simulation.dump: true` (set in every current config), the run writes a

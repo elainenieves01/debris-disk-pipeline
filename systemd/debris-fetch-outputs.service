@@ -1,0 +1,11 @@
+[Unit]
+Description=Copy finished barbieri runs into this machine's outputs/
+After=network-online.target
+Wants=network-online.target
+
+# Started hourly by debris-fetch-outputs.timer. Paths are the work computer's
+# (user elaines), as in debris-sim@.service.
+[Service]
+Type=oneshot
+WorkingDirectory=/home/elaines/debris-disk-pipeline-work-computer
+ExecStart=/home/elaines/miniconda3/envs/debris_pipeline/bin/python -u src/launch/fetch_outputs.py
