@@ -1,15 +1,15 @@
 # 500 kyr run, slope q=3.5, 1 M_earth disk (same selected.csv as
 # SS_800MP_500kyr_1Mearth_slopeq3.5), with semimajor axes drawn from a
 # Lorentzian in ln a (peak ln mu = ln(mu_0**2 / sqrt(mu_0**2 + sigma**2)))
-# truncated to [amin, amax]. a_sigma is the std of the old uniform belt,
-# (amax - amin) / sqrt(12).
+# truncated to [amin, amax]. a_sigma = 1 AU gives a sharper peak than the
+# old uniform belt's std, (amax - amin) / sqrt(12) = 2.887 AU.
 # compute.target: barbieri dispatches this to the shared lab machine over
 # SSH (rsync + conda bootstrap + tmux). See README.md "Local vs. remote".
 
 disk:
   a_distribution: lorentzian
   a_center: 100
-  a_sigma: 2.887
+  a_sigma: 1
   amax: 105
   amin: 95
   emax: 3.2e-05
