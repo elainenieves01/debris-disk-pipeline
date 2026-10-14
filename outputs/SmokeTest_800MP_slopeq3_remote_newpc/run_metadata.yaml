@@ -1,0 +1,24 @@
+run_name: SmokeTest_800MP_slopeq3_remote_newpc
+run_uuid: d3432ac3-bb66-4d28-8dd3-9f970df61184
+created: '2026-09-28T16:40:11+00:00'
+command: src/simulation/run_simulation.py config/SmokeTest_800MP_slopeq3_remote_newpc.yaml
+config:
+  source_path: config/SmokeTest_800MP_slopeq3_remote_newpc.yaml
+  frozen_copy: config.yaml
+git:
+  available: false
+software:
+  python: 3.12.14
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: barbieri
+  platform: Linux-5.15.0-185-generic-x86_64-with-glibc2.35
+finished: '2026-09-28T16:51:54+00:00'
+wall_runtime_seconds: 698.3
+outcome: completed
+initial_particle_count: 801
+final_particle_count: 801

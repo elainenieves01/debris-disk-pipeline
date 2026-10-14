@@ -1,0 +1,24 @@
+run_name: SS_800MP_10Myr_10Mearth_uniform
+run_uuid: c5b49c9d-7aa9-4081-867c-2ad804edbb12
+created: '2026-09-25T15:16:38+00:00'
+command: src/simulation/run_simulation.py config/SS_800MP_10Myr_10Mearth_uniform.yaml
+config:
+  source_path: config/SS_800MP_10Myr_10Mearth_uniform.yaml
+  frozen_copy: config.yaml
+git:
+  available: false
+software:
+  python: 3.12.14
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: barbieri
+  platform: Linux-5.15.0-185-generic-x86_64-with-glibc2.35
+finished: '2026-10-03T10:09:29+00:00'
+wall_runtime_seconds: 672770.2
+outcome: completed
+initial_particle_count: 801
+final_particle_count: 801
