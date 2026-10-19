@@ -10,8 +10,10 @@ bodies the C_e diagnostic excludes; see src/utilities/rayleigh_cut.py). Runs
 with test particles also get a dotted curve for the test-particle RMS e
 (all surviving test particles, no cut).
 
-A second figure adds the 100 Myr SS_100MP 10x / 30x / 50x Stir runs to the same
-curves.
+A second figure adds the 100 Myr SS_100MP 10x / 30x / 50x Stir runs to the same curves.
+
+A third figure shows the 100 Myr SS_800MP q=3 / 3.5 / 4 / 5 runs on their own (their RMS e
+is 1e-5 .. 1e-3, far below the others).
 
 Every curve is fitted as e = A t^p (degree-1 log-log polyfit; thin black line = fit for
 t >= 1e5 yr, legend gives p for t >= 1e5 yr and for the whole run) and a dashed reference line of slope 1/4 is drawn.
@@ -21,6 +23,7 @@ it first reaches it and the time is given in the legend and the fit table.
 
 Writes: calibration/rms_e_all_runs_overlay.png
         calibration/rms_e_all_runs_plus_stir_overlay.png
+        calibration/rms_e_100Myr_800MP_slopes_overlay.png
         calibration/rms_e_all_runs_fits.md
 """
 
@@ -50,9 +53,13 @@ OUT_DIR = Path(__file__).resolve().parent
 RUNS = {
     "SS_800MP_500kyr_1Mearth_slopeq3.5": ("500 kyr, 1 M$_\\oplus$, q=3.5 (no TP), MPs", "#2a78d6", "-"),
     "SS_800MP_1000TP_500kyr_1Mearth_slopeq3.5": ("500 kyr, 1 M$_\\oplus$, q=3.5 (1000 TP), MPs", "#2a78d6", "--"),
+    "SS_800MP_10Myr_1Mearth_slopeq2.5": ("10 Myr, 1 M$_\\oplus$, q=2.5, MPs", "#d6336c", "-"),
     "SS_800MP_10Myr_1Mearth_slopeq3.5": ("10 Myr, 1 M$_\\oplus$, q=3.5, MPs", "#eb6834", "-"),
     "SS_800MP_10Myr_1Mearth_slopeq4.5": ("10 Myr, 1 M$_\\oplus$, q=4.5, MPs", "#2f9e6b", "-"),
     "SS_800MP_10Myr_1Mearth_uniform": ("10 Myr, 1 M$_\\oplus$, uniform, MPs", "#8a5fd1", "-"),
+    "SS_800MP_10Myr_10Mearth_slopeq2.5": ("10 Myr, 10 M$_\\oplus$, q=2.5, MPs", "#d6336c", "--"),
+    "SS_800MP_10Myr_10Mearth_slopeq3.5": ("10 Myr, 10 M$_\\oplus$, q=3.5, MPs", "#eb6834", "--"),
+    "SS_800MP_10Myr_10Mearth_slopeq4.5": ("10 Myr, 10 M$_\\oplus$, q=4.5, MPs", "#2f9e6b", "--"),
     "SS_800MP_10Myr_10Mearth_uniform": ("10 Myr, 10 M$_\\oplus$, uniform, MPs", "#8a5fd1", "--"),
 }
 
@@ -61,6 +68,15 @@ STIR_RUNS = {
     "SS_100MP_100Myr_10xStir": ("100 Myr, 10x Stir, MPs", "#c9302c", "-"),
     "SS_100MP_100Myr_30xStir": ("100 Myr, 30x Stir, MPs", "#7a4a2b", "-"),
     "SS_100MP_100Myr_50xStir": ("100 Myr, 50x Stir, MPs", "#4a4a4a", "-"),
+}
+
+# 100 Myr SS_800MP radius-slope runs (unrescaled masses, ~1e-5 M_earth disks):
+# RMS e stays 1e-5 .. 1e-3, so they get their own figure.
+SLOPE_100MYR_RUNS = {
+    "SS_800MP_100Myr_slopeq3": ("100 Myr, 800 MPs, q=3, MPs", "#1b9e9e", "-."),
+    "SS_800MP_100Myr_slopeq3.5": ("100 Myr, 800 MPs, q=3.5, MPs", "#a6761d", "-."),
+    "SS_800MP_100Myr_slopeq4": ("100 Myr, 800 MPs, q=4, MPs", "#1f2d7a", "-."),
+    "SS_800MP_100Myr_slopeq5": ("100 Myr, 800 MPs, q=5, MPs", "#c2185b", "-."),
 }
 
 
@@ -106,18 +122,31 @@ def plot_with_fit(ax, t, y, label, colour, linestyle, linewidth, fits):
             linestyle="-", linewidth=0.7, alpha=0.8, zorder=5)
 
 
-def make_figure(runs, out_name, title):
-    fig, ax = plt.subplots(figsize=(9, 5.5))
-    fits = []
+_CURVE_CACHE = {}
 
-    for run, (label, colour, linestyle) in runs.items():
+
+def load_curves(run):
+    """(df, t, rms_cut) for a run, read from its archive once per script run."""
+    if run not in _CURVE_CACHE:
         run_dir = OUTPUTS / run
         config = read_config(str(run_dir / "config.yaml"))
         nsigma = cut_nsigma_from_config(config)
         df = build_snapshot_table(run_dir / f"{run}.bin")
         t, _, rms_cut, _ = rms_eccentricity_rayleigh_cut(
             df, float(config["disk"]["emax"]), nsigma)
+        _CURVE_CACHE[run] = (df, t, rms_cut)
+    return _CURVE_CACHE[run]
+
+
+def make_figure(runs, out_name, title):
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    fits = []
+    t_end = 1e7
+
+    for run, (label, colour, linestyle) in runs.items():
+        df, t, rms_cut = load_curves(run)
         keep = t > 0  # log axis
+        t_end = max(t_end, float(t[keep][-1]))
         plot_with_fit(ax, t[keep], rms_cut[keep], label, colour, linestyle, 1.8, fits)
         if (df["role"] == "test_particle").any():
             rms_tp = rms_by_snapshot(df, "test_particle", "e")
@@ -129,7 +158,7 @@ def make_figure(runs, out_name, title):
         print(f"{run}: final RMS e = {rms_cut[-1]:.4e}")
 
     # reference slope 1/4 (Krivov & Booth 2018 viscous stirring, RMS e ~ t^(1/4))
-    t_ref = np.array([1e4, ax.get_xlim()[1] if False else 1e7])
+    t_ref = np.array([1e4, t_end])
     ax.plot(t_ref, 1.2e-3 * (t_ref / 1e4) ** 0.25, color="black", linestyle="--",
             linewidth=1.5, label="Reference slope 1/4 (RMS e $\\propto$ t$^{1/4}$)")
     ax.text(t_ref[1], 1.2e-3 * (t_ref[1] / 1e4) ** 0.25, " slope 1/4", va="center",
@@ -174,7 +203,9 @@ def main():
                 "RMS Eccentricity vs Time: all finished SS_800MP runs")
     all_fits = make_figure({**RUNS, **STIR_RUNS}, "rms_e_all_runs_plus_stir_overlay.png",
                            "RMS Eccentricity vs Time: SS_800MP runs + 10x / 30x / 50x Stir")
-    write_fit_table(all_fits)
+    slope_fits = make_figure(SLOPE_100MYR_RUNS, "rms_e_100Myr_800MP_slopes_overlay.png",
+                             "RMS Eccentricity vs Time: 100 Myr SS_800MP q = 3 / 3.5 / 4 / 5")
+    write_fit_table(all_fits + slope_fits)
 
 
 if __name__ == "__main__":
