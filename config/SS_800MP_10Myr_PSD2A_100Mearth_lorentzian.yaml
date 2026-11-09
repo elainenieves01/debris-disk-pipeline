@@ -88,7 +88,7 @@ compute:
   tmux_session: null
   remotes:
     work_computer:
-      host: 10.16.39.109
+      host: 10.16.39.123
       username: elaines
       remote_dir: ~/debris-disk-pipeline
       conda_env: debris_pipeline

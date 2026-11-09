@@ -1,0 +1,51 @@
+run_name: SS_800MP_10Myr_PSD2B_100Mearth_lorentzian
+run_uuid: 74ce6c25-435b-41de-8f13-3c785d404f89
+created: '2026-10-14T17:56:04-03:00'
+command: src/simulation/run_simulation.py config/SS_800MP_10Myr_PSD2B_100Mearth_lorentzian.yaml
+config:
+  source_path: config/SS_800MP_10Myr_PSD2B_100Mearth_lorentzian.yaml
+  frozen_copy: config.yaml
+git:
+  available: true
+  commit: e2f4500c1dff6271650542698ba60951c8d5f7ff
+  short: e2f4500
+  branch: main
+  describe: e2f4500-dirty
+  dirty: true
+  dirty_files:
+  - notebooks/mass_model_playground.ipynb
+software:
+  python: 3.12.14
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: elaines
+  platform: Linux-6.8.0-51-generic-x86_64-with-glibc2.39
+resumes:
+- timestamp: '2026-10-19T14:24:34-03:00'
+  command: src/simulation/run_simulation.py config/SS_800MP_10Myr_PSD2B_100Mearth_lorentzian.yaml
+  git:
+    available: true
+    commit: 1bb8d546072e5f11d25c795e8d6168b0281bac5a
+    short: 1bb8d54
+    branch: main
+    describe: 1bb8d54-dirty
+    dirty: true
+    dirty_files:
+    - notebooks/mass_model_playground.ipynb
+  software:
+    python: 3.12.14
+    rebound: 5.0.0
+    numpy: 2.4.6
+    pandas: 3.0.3
+    matplotlib: 3.10.9
+    pyyaml: 6.0.3
+finished: '2026-10-25T17:01:22-03:00'
+wall_runtime_seconds: 527797.4
+outcome: completed
+initial_particle_count: 802
+final_particle_count: 802
+archive_name_check: ok

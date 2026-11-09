@@ -1,0 +1,97 @@
+# Plantesimal_Size_Dist_2 model A (q=2.5), 1 M_earth Lorentzian disk (a_sigma=1 AU), 10 Myr.
+# Giant planet: 1 M_jupiter (317.9 M_earth), 5 Hill radii inside the innermost disk body (95.0401 AU).
+# compute.target: work_computer (Linux Mint box, see README.md 'Local vs. remote').
+
+
+disk:
+  a_distribution: lorentzian
+  a_center: 100
+  a_sigma: 1
+  amax: 105
+  amin: 95
+  emax: 3.2e-05
+  emin: 0.0
+  imax_deg: 3.2e-05
+  imin_deg: 0.0
+giant_planet:
+  mass_jupiter: 1.00000000
+  a: 70.852725
+  e: 0.0
+  inc_deg: 0.0
+  omega_deg: 0.0
+  Omega_random: true
+  t_peri_jd: 2451545.0
+  orbital_period_days: 217833.698
+  epoch_jd: 2451545.0
+integration:
+  exit_max_distance: 1000.0
+  integrator: mercurius
+  maxtime: 10000000
+  time_step: 10000
+  timestep_fraction_of_planet_period: 0.1
+massive_planetesimals:
+  N: 800
+  distribution:
+    type: power_law
+    mode: csv
+    variable: radius
+    unit: km
+    path: src/mass_models/Plantesimal_Size_Dist_2_1Mearth/model_A/selected.csv
+    slope: 2.5
+notify:
+  enabled: true
+  ntfy_topic: https://ntfy.sh/elaine-hd216435-run
+plots:
+  dpi: 200
+  enabled: true
+  final_conditions:
+    output_file: outputs/FinalConditions.png
+  limits:
+    a_evolution:
+      xlim: null
+      ylim: null
+    ae:
+      xlim: null
+      ylim: null
+    ai:
+      xlim: null
+      ylim: null
+    e_evolution:
+      xlim: null
+      ylim: null
+    i_evolution:
+      xlim: null
+      ylim: null
+    mode: auto
+    survival:
+      xlim: null
+      ylim: null
+  scale:
+    x: linear
+    y: linear
+simulation:
+  dump: true
+  name: SS_800MP_10Myr_PSD2A_1Mjup_lorentzian
+  output_dir: outputs
+  random_seed: 0
+star:
+  mass: 1.0
+test_particles:
+  N: 0
+  distribution: uniform
+units:
+  length: AU
+  mass: Msun
+  time: yr
+compute:
+  target: work_computer
+  tmux_session: null
+  remotes:
+    work_computer:
+      host: 10.16.39.109
+      username: elaines
+      remote_dir: ~/debris-disk-pipeline
+      conda_env: debris_pipeline
+      environment_file: environment.yml
+      ssh_opts: []
+      rsync_excludes: []

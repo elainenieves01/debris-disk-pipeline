@@ -269,6 +269,34 @@ like Slurm or PBS instead — running against policy risks the job being
 killed by a resource monitor. Job-scheduler submission support can be added
 here later if your cluster requires it.
 
+### Slurm on a remote: `scheduler: slurm`
+
+For a remote that runs Slurm, add `scheduler: slurm` (and optionally a `slurm:`
+block) to its `compute.remotes` entry. The launcher then syncs and bootstraps as
+usual but submits the run with `sbatch` (via `scripts/remote/launch_slurm.sh`)
+instead of starting tmux. Jobs are `--requeue`, so a reboot restarts them from
+the run's dump file.
+
+```yaml
+compute:
+  target: work_computer
+  remotes:
+    work_computer:
+      host: 10.16.39.123
+      username: elaines
+      remote_dir: ~/debris-disk-pipeline
+      conda_env: debris_pipeline
+      scheduler: slurm         # default: tmux
+      slurm:                   # all optional
+        partition: null        # default: the cluster's default partition
+        mem: 512M
+        time: 60-00:00:00
+        cpus: 1
+```
+
+Job output goes to `<remote_dir>/logs/slurm/<run name>-<jobid>.out`. The work
+computer's one-time Slurm install is in `slurm/SETUP_work_computer.md`.
+
 ### Copying finished runs back: `fetch_outputs.py`
 
 `src/launch/fetch_outputs.py` copies every finished remote run's

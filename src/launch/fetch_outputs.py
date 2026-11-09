@@ -60,7 +60,12 @@ def _ssh_opts(remote_cfg):
 
 def _list_script(remote_dir):
     """Shell script printing, per remote run, its run_metadata.yaml and .bin size."""
-    outputs = shlex.quote(remote_dir.rstrip("/") + "/outputs")
+    outputs_path = remote_dir.rstrip("/") + "/outputs"
+    if outputs_path.startswith("~/"):
+        # shlex.quote would make "~" literal; let the remote shell expand $HOME.
+        outputs = '"$HOME"/' + shlex.quote(outputs_path[2:])
+    else:
+        outputs = shlex.quote(outputs_path)
     return (
         f"cd {outputs} 2>/dev/null || exit 0\n"
         f"for d in */; do n=${{d%/}}; "

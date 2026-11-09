@@ -112,6 +112,33 @@ def build_launch_cmd(remote_cfg, session, config_rel_path):
     return [*_ssh_base(remote_cfg), "bash", "-lc", shlex.quote(remote_command)]
 
 
+def uses_slurm(remote_cfg):
+    return str(remote_cfg.get("scheduler", "tmux")).lower() == "slurm"
+
+
+def build_slurm_cmd(remote_cfg, job, config_rel_path):
+    """sbatch submission via scripts/remote/launch_slurm.sh. Optional
+    compute.remotes.<name>.slurm: {partition, mem, time, cpus}."""
+    remote_dir = remote_cfg["remote_dir"].rstrip("/")
+    opts = remote_cfg.get("slurm") or {}
+
+    def home_aware(path):
+        # shlex.quote would make a leading "~" literal; let the remote shell expand it.
+        return '"$HOME"/' + shlex.quote(path[2:]) if path.startswith("~/") else shlex.quote(path)
+
+    remote_command = " ".join([
+        home_aware(f"{remote_dir}/scripts/remote/launch_slurm.sh"),
+        *(shlex.quote(str(part)) for part in (remote_cfg["conda_env"], job)),
+        home_aware(remote_dir),
+        *(shlex.quote(str(part)) for part in (
+            config_rel_path, opts.get("partition") or "-", opts.get("mem", "512M"),
+            opts.get("time", "60-00:00:00"), opts.get("cpus", 1),
+        )),
+    ])
+    # Same single-token quoting as build_bootstrap_cmd.
+    return [*_ssh_base(remote_cfg), "bash", "-lc", shlex.quote(remote_command)]
+
+
 def _run_inherited(cmd, step_name):
     """Run cmd with inherited stdio (password/2FA prompts show normally).
     Raises RemoteLaunchError on nonzero exit or launch failure."""
@@ -146,6 +173,17 @@ def remote_launch(config, config_path, target):
 
     _run_inherited(build_bootstrap_cmd(remote_cfg), "remote conda bootstrap")
     print(f"Remote conda env '{remote_cfg['conda_env']}' ready.")
+
+    if uses_slurm(remote_cfg):
+        _run_inherited(
+            build_slurm_cmd(remote_cfg, session, config_rel_path), "remote sbatch"
+        )
+        print(f"Submitted Slurm job '{session}' on {target}.")
+        print()
+        print("Check on it any time:")
+        print(f'  ssh {remote_cfg["username"]}@{remote_cfg["host"]} "squeue -u {remote_cfg["username"]}"')
+        print(f"  (output: {remote_cfg['remote_dir']}/logs/slurm/{session}-<jobid>.out)")
+        return
 
     _run_inherited(
         build_launch_cmd(remote_cfg, session, config_rel_path), "remote tmux launch"

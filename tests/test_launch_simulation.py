@@ -139,3 +139,16 @@ def test_launch_local_refuses_duplicate_session():
         with pytest.raises(SystemExit) as exc_info:
             launch_simulation.launch_local(LOCAL_CONFIG, "config/pytest_local.yaml")
     assert exc_info.value.code == 1
+
+
+def test_slurm_remote_builds_sbatch_command():
+    cfg = {
+        "host": "h", "username": "u", "remote_dir": "~/dd", "conda_env": "env",
+        "ssh_opts": [], "scheduler": "slurm",
+        "slurm": {"mem": "3G", "time": "10-00:00:00"},
+    }
+    assert remote.uses_slurm(cfg)
+    cmd = remote.build_slurm_cmd(cfg, "job1", "config/x.yaml")
+    assert cmd[:2] == ["ssh", "u@h"]
+    assert "launch_slurm.sh" in cmd[-1] and "3G" in cmd[-1] and "10-00:00:00" in cmd[-1]
+    assert not remote.uses_slurm({"host": "h"})
