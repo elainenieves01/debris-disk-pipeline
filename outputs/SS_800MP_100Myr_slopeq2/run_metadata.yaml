@@ -1,0 +1,36 @@
+run_name: SS_800MP_100Myr_slopeq2
+run_uuid: 2849c1e7-ce19-425b-9546-76251161d494
+created: '2026-09-21T21:01:34+00:00'
+command: src/simulation/run_simulation.py config/SS_800MP_100Myr_slopeq2.yaml
+config:
+  source_path: config/SS_800MP_100Myr_slopeq2.yaml
+  frozen_copy: config.yaml
+git:
+  available: false
+software:
+  python: 3.12.14
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: barbieri
+  platform: Linux-5.15.0-185-generic-x86_64-with-glibc2.35
+resumes:
+- timestamp: '2026-09-21T21:19:09+00:00'
+  command: src/simulation/run_simulation.py config/SS_800MP_100Myr_slopeq2.yaml
+  git:
+    available: false
+  software:
+    python: 3.12.14
+    rebound: 5.0.0
+    numpy: 2.4.6
+    pandas: 3.0.3
+    matplotlib: 3.10.9
+    pyyaml: 6.0.3
+finished: '2026-10-20T22:51:42+00:00'
+wall_runtime_seconds: 2511151.8
+outcome: completed
+initial_particle_count: 801
+final_particle_count: 801

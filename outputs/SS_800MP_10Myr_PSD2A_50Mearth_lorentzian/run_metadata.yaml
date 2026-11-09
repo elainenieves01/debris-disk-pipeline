@@ -1,0 +1,25 @@
+run_name: SS_800MP_10Myr_PSD2A_50Mearth_lorentzian
+run_uuid: c379b5a1-5ce1-4034-ab3c-29c9e2ca9fda
+created: '2026-10-14T20:18:12+00:00'
+command: src/simulation/run_simulation.py config/SS_800MP_10Myr_PSD2A_50Mearth_lorentzian.yaml
+config:
+  source_path: config/SS_800MP_10Myr_PSD2A_50Mearth_lorentzian.yaml
+  frozen_copy: config.yaml
+git:
+  available: false
+software:
+  python: 3.12.14
+  rebound: 5.0.0
+  numpy: 2.4.6
+  pandas: 3.0.3
+  matplotlib: 3.10.9
+  pyyaml: 6.0.3
+host:
+  hostname: barbieri
+  platform: Linux-5.15.0-185-generic-x86_64-with-glibc2.35
+finished: '2026-10-25T13:26:42+00:00'
+wall_runtime_seconds: 925688.3
+outcome: completed
+initial_particle_count: 802
+final_particle_count: 802
+archive_name_check: ok

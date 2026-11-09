@@ -73,6 +73,8 @@ STIR_RUNS = {
 # 100 Myr SS_800MP radius-slope runs (unrescaled masses, ~1e-5 M_earth disks):
 # RMS e stays 1e-5 .. 1e-3, so they get their own figure.
 SLOPE_100MYR_RUNS = {
+    "SS_800MP_100Myr_slopeq2": ("100 Myr, 800 MPs, q=2, MPs", "#e31a1c", "-."),
+    "SS_800MP_100Myr_slopeq2.5": ("100 Myr, 800 MPs, q=2.5, MPs", "#4daf4a", "-."),
     "SS_800MP_100Myr_slopeq3": ("100 Myr, 800 MPs, q=3, MPs", "#1b9e9e", "-."),
     "SS_800MP_100Myr_slopeq3.5": ("100 Myr, 800 MPs, q=3.5, MPs", "#a6761d", "-."),
     "SS_800MP_100Myr_slopeq4": ("100 Myr, 800 MPs, q=4, MPs", "#1f2d7a", "-."),
@@ -204,7 +206,7 @@ def main():
     all_fits = make_figure({**RUNS, **STIR_RUNS}, "rms_e_all_runs_plus_stir_overlay.png",
                            "RMS Eccentricity vs Time: SS_800MP runs + 10x / 30x / 50x Stir")
     slope_fits = make_figure(SLOPE_100MYR_RUNS, "rms_e_100Myr_800MP_slopes_overlay.png",
-                             "RMS Eccentricity vs Time: 100 Myr SS_800MP q = 3 / 3.5 / 4 / 5")
+                             "RMS Eccentricity vs Time: 100 Myr SS_800MP q = 2 / 2.5 / 3 / 3.5 / 4 / 5")
     write_fit_table(all_fits + slope_fits)
 
 
