@@ -154,13 +154,26 @@ def format_time(seconds):
 def choose_timestep(sim, config, has_giant_planet, Mstar, a_ref):
     """Pick the integrator timestep.
 
-    With a giant planet, use a fraction of its orbital period (particle 1).
-    Without one, use the same fraction of a circular orbital period at
-    ``a_ref`` (the inner edge of the disk) around the star.
+    If ``integration.dt_yr`` is set, use it as a manual timestep (years).
+    Otherwise fall back to ``timestep_fraction_of_planet_period``: with a
+    giant planet, that fraction of its orbital period (particle 1); without
+    one, the same fraction of a circular orbital period at ``a_ref`` (the
+    inner edge of the disk) around the star.
     """
-    fraction = float(
-        config["integration"]["timestep_fraction_of_planet_period"]
-    )
+    integ = config["integration"]
+    manual_dt = integ.get("dt_yr")
+    if manual_dt is not None:
+        dt = float(manual_dt)
+        print(f"  Timestep: {dt:.6e} (manual, integration.dt_yr)")
+        return dt
+
+    fraction = integ.get("timestep_fraction_of_planet_period")
+    if fraction is None:
+        raise ValueError(
+            "integration: set either dt_yr (manual timestep, years) or "
+            "timestep_fraction_of_planet_period"
+        )
+    fraction = float(fraction)
 
     if has_giant_planet:
         ref_period = sim.particles[1].P

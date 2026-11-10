@@ -535,10 +535,15 @@ def summarize_legacy_config(config):
 
     m_star = float((config.get("star") or {}).get("mass", 1.0))
     m_planet = float(gp["mass_jupiter"]) * LEGACY_JUPITER_MASS_TO_SOLAR_MASS if gp else 0.0
-    if gp:
+    if integ.get("dt_yr") is not None:
+        row["dt_yr"] = _g(float(integ["dt_yr"]))
+        row["dt_basis"] = "manual (integration.dt_yr)"
+        if str(integ.get("integrator", "")).lower() == "ias15":
+            notes.append("IAS15 is adaptive: dt_yr is only the initial timestep")
+    elif gp:
         # legacy: sim.dt = fraction * sim.particles[1].P (units yr, AU, Msun: G = 4 pi^2)
         period = (float(gp["a"]) ** 3 / (m_star + m_planet)) ** 0.5
-        fraction = float(integ.get("timestep_fraction_of_planet_period", 0.1))
+        fraction = float(integ.get("timestep_fraction_of_planet_period") or 0.1)
         row["dt_yr"] = _g(fraction * period)
         row["dt_basis"] = f"{fraction:g} x giant planet orbital period"
         if str(integ.get("integrator", "")).lower() == "ias15":

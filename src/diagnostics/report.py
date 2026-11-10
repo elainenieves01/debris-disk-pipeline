@@ -192,9 +192,10 @@ def generate_report(config, config_path, archive_path, output_path, terminal_out
     lines.append(f"- Integrator: {integration_cfg['integrator']}")
     lines.append(f"- maxtime: {integration_cfg['maxtime']}")
     lines.append(f"- time_step: {integration_cfg['time_step']}")
+    lines.append(f"- dt_yr (manual): {integration_cfg.get('dt_yr')}")
     lines.append(
         "- timestep_fraction_of_planet_period: "
-        f"{integration_cfg['timestep_fraction_of_planet_period']}"
+        f"{integration_cfg.get('timestep_fraction_of_planet_period')}"
     )
     lines.append(f"- exit_max_distance: {integration_cfg['exit_max_distance']} au")
     lines.append("")

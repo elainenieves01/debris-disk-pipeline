@@ -28,8 +28,9 @@ integration:
   exit_max_distance: 1000.0
   integrator: mercurius
   maxtime: 10000000
-  time_step: 10000
-  timestep_fraction_of_planet_period: 0.1
+  time_step: 1000
+  dt_yr: 1
+  timestep_fraction_of_planet_period:
 massive_planetesimals:
   N: 800
   distribution:
