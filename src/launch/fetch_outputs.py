@@ -1,24 +1,30 @@
 """
 fetch_outputs.py
 
-Copy finished remote runs' output folders (outputs/<name>/ on barbieri or any
-other compute.remotes host) into this checkout's outputs/, so every machine
-that runs this keeps its own copy of the results.
+Copy finished remote runs' results (outputs/<name>/ on barbieri or any other
+compute.remotes host) into this checkout's outputs/.
 
-    python src/launch/fetch_outputs.py              # copy anything new
+The full outputs -- the SimulationArchive (.bin), the resume checkpoint and
+everything else -- live on the cluster (barbieri). By default only the
+figures, the report and the small run files (run_metadata.yaml, config.yaml,
+environment.txt) are copied here; the .bin and dump_data.json are left behind.
+Pass --with-archive to also copy the archive.
+
+    python src/launch/fetch_outputs.py              # copy anything new (no .bin)
     python src/launch/fetch_outputs.py --dry-run    # only list what it would copy
     python src/launch/fetch_outputs.py --target barbieri
+    python src/launch/fetch_outputs.py --with-archive
 
 A run is "finished" when its remote run_metadata.yaml records an outcome
 (completed or failed); runs still going, or killed before recording one, are
 left alone. A run is skipped when this machine already has it -- a local
-run_metadata.yaml with the same run_uuid and an outcome, plus a local .bin the
-same size as the remote one (git tracks a run's metadata and reports but not
-its .bin, so a checkout can have the first without the second). A local
+run_metadata.yaml with the same run_uuid and an outcome (with --with-archive,
+also a local .bin the same size as the remote one). A local
 folder that belongs to a *different* run of the same name is never
 overwritten; it's reported instead.
 
-Files already here are never replaced, except the .bin itself: a run's
+Files already here are never replaced, except the .bin itself (with
+--with-archive): a run's
 reports and figures often get revised (and committed) after it finishes, and
 the remote's originals mustn't overwrite them. run_metadata.yaml is copied
 last, and an interrupted copy is simply picked up again next time.
@@ -125,15 +131,14 @@ def remote_runs(remote_cfg):
     return _parse_listing(result.stdout)
 
 
-def plan(runs, outputs_dir):
+def plan(runs, outputs_dir, with_archive=False):
     """
     Decide what to do with each remote run. Returns {name: (action, reason)},
     action one of "fetch", "have", "running", "conflict", "skip".
 
-    "have" needs the same run_uuid with an outcome AND, when the remote run
-    has an archive, a local <name>.bin of the same size -- the repo tracks
-    run_metadata.yaml and reports but not .bin files, so a checkout can hold
-    a run's metadata without its archive.
+    "have" needs the same run_uuid with an outcome AND, only when
+    ``with_archive`` and the remote run has an archive, a local <name>.bin of
+    the same size.
     """
     decisions = {}
     for name, remote in sorted(runs.items()):
@@ -158,7 +163,7 @@ def plan(runs, outputs_dir):
             )
         elif not local_meta.get("outcome"):
             decisions[name] = ("fetch", "local copy predates the run finishing")
-        elif remote["bin_size"] is not None and local_size != remote["bin_size"]:
+        elif with_archive and remote["bin_size"] is not None and local_size != remote["bin_size"]:
             decisions[name] = ("fetch", "archive missing here" if local_size is None
                                else "local archive incomplete")
         else:
@@ -166,30 +171,35 @@ def plan(runs, outputs_dir):
     return decisions
 
 
-def build_rsync_cmds(remote_cfg, name, outputs_dir, has_archive=True):
+def build_rsync_cmds(remote_cfg, name, outputs_dir, has_archive=True,
+                     with_archive=False):
     """
     The rsyncs that copy one run, in order:
       1. everything but the archive and run_metadata.yaml, never replacing a
          file already here -- reports and figures get revised locally after a
          run (and committed), and the remote's originals mustn't clobber them;
-      2. <name>.bin, which is never edited locally, so it's always brought
-         up to date (resuming a partial copy);
+      2. only with ``with_archive``: <name>.bin, which is never edited
+         locally, so it's always brought up to date (resuming a partial copy);
       3. run_metadata.yaml, last, once the rest is in place.
+
+    Without ``with_archive`` the .bin and the resume checkpoint
+    (dump_data.json) stay on the remote.
     """
     user_host = f"{remote_cfg['username']}@{remote_cfg['host']}"
     src = f"{user_host}:{remote_cfg['remote_dir'].rstrip('/')}/outputs/{name}/"
     dest = f"{Path(outputs_dir) / name}/"
     base = ["rsync", "-a", "--partial", "-e", " ".join(["ssh", *_ssh_opts(remote_cfg)])]
     archive = f"{name}.bin"
+    skip_checkpoint = [] if with_archive else ["--exclude", "dump_data.json"]
     cmds = [[*base, "--ignore-existing", "--exclude", RUN_METADATA_FILENAME,
-             "--exclude", archive, src, dest]]
-    if has_archive:
+             "--exclude", archive, *skip_checkpoint, src, dest]]
+    if has_archive and with_archive:
         cmds.append([*base, src + archive, dest])
     cmds.append([*base, src + RUN_METADATA_FILENAME, dest])
     return cmds
 
 
-def fetch(target=None, outputs_dir=OUTPUTS_DIR, dry_run=False):
+def fetch(target=None, outputs_dir=OUTPUTS_DIR, dry_run=False, with_archive=False):
     """Copy every finished, not-yet-here run from each remote. Returns the copied names."""
     remotes = run_log.known_remotes()
     if target is not None:
@@ -199,7 +209,7 @@ def fetch(target=None, outputs_dir=OUTPUTS_DIR, dry_run=False):
     copied = []
     for remote_name, remote_cfg in sorted(remotes.items()):
         runs = remote_runs(remote_cfg)
-        decisions = plan(runs, outputs_dir)
+        decisions = plan(runs, outputs_dir, with_archive)
         for name, (action, reason) in decisions.items():
             if action in ("fetch", "conflict"):
                 print(f"  [{remote_name}] {name}: {reason}")
@@ -207,7 +217,8 @@ def fetch(target=None, outputs_dir=OUTPUTS_DIR, dry_run=False):
                 continue
             Path(outputs_dir, name).mkdir(parents=True, exist_ok=True)
             for cmd in build_rsync_cmds(remote_cfg, name, outputs_dir,
-                                        has_archive=runs[name]["bin_size"] is not None):
+                                        has_archive=runs[name]["bin_size"] is not None,
+                                        with_archive=with_archive):
                 if subprocess.run(cmd).returncode != 0:
                     print(f"  [{remote_name}] {name}: copy failed, will retry next time",
                           file=sys.stderr)
@@ -226,6 +237,9 @@ def main(argv=None):
     p.add_argument("--target", default=None, help="only this remote (default: all)")
     p.add_argument("--outputs", default=str(OUTPUTS_DIR))
     p.add_argument("--dry-run", action="store_true", help="list what would be copied")
+    p.add_argument("--with-archive", action="store_true",
+                   help="also copy each run's .bin and dump_data.json "
+                        "(default: figures, report and small run files only)")
     args = p.parse_args(argv)
 
     Path(args.outputs).mkdir(parents=True, exist_ok=True)
@@ -236,7 +250,7 @@ def main(argv=None):
             print("another fetch_outputs.py is still copying; skipping this round")
             return
         print(f"--- fetch_outputs {run_log.now_iso()}")
-        copied = fetch(args.target, args.outputs, args.dry_run)
+        copied = fetch(args.target, args.outputs, args.dry_run, args.with_archive)
         if not args.dry_run:
             print(f"Copied {len(copied)} run(s): {', '.join(copied) or 'none'}")
 

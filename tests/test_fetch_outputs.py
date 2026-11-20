@@ -36,7 +36,7 @@ def test_plan_decides_per_run(tmp_path):
         "still_going": _remote(run_uuid="s"),
         "bad name": _remote(run_uuid="b", outcome="completed"),
     }
-    actions = {name: action for name, (action, _) in fetch_outputs.plan(runs, tmp_path).items()}
+    actions = {name: action for name, (action, _) in fetch_outputs.plan(runs, tmp_path, with_archive=True).items()}
     assert actions == {
         "new_run": "fetch",
         "have_it": "have",
@@ -62,12 +62,14 @@ def test_listing_parses_metadata_and_archive_size():
 
 
 def test_copy_order_and_local_files_are_never_replaced(tmp_path):
-    rest, archive, metadata = fetch_outputs.build_rsync_cmds(REMOTE, "run1", tmp_path)
+    rest, archive, metadata = fetch_outputs.build_rsync_cmds(
+        REMOTE, "run1", tmp_path, with_archive=True)
     src = "u@h:/r/pipeline/outputs/run1/"
     dest = f"{tmp_path}/run1/"
     # 1. reports/figures: never replace a local file (they get revised locally)
     assert "--ignore-existing" in rest
     assert rest[-6:] == ["--exclude", "run_metadata.yaml", "--exclude", "run1.bin", src, dest]
+    assert "dump_data.json" not in rest  # checkpoint comes along with the archive
     # 2. the archive is always brought up to date; 3. metadata last
     assert "--ignore-existing" not in archive and archive[-2:] == [src + "run1.bin", dest]
     assert "--ignore-existing" not in metadata
@@ -77,7 +79,8 @@ def test_copy_order_and_local_files_are_never_replaced(tmp_path):
 
 
 def test_run_without_an_archive_skips_that_copy(tmp_path):
-    cmds = fetch_outputs.build_rsync_cmds(REMOTE, "run1", tmp_path, has_archive=False)
+    cmds = fetch_outputs.build_rsync_cmds(
+        REMOTE, "run1", tmp_path, has_archive=False, with_archive=True)
     assert len(cmds) == 2 and not any(c[-2].endswith(".bin") for c in cmds)
 
 
@@ -108,9 +111,26 @@ LISTING = (
 
 def test_fetch_copies_only_finished_runs(tmp_path, monkeypatch):
     calls = _fake_remote(monkeypatch, LISTING)
-    assert fetch_outputs.fetch(outputs_dir=tmp_path) == ["done_run"]
+    assert fetch_outputs.fetch(outputs_dir=tmp_path, with_archive=True) == ["done_run"]
     rsyncs = [c for c in calls if c[0] == "rsync"]
     assert len(rsyncs) == 3 and all("done_run" in c[-2] for c in rsyncs)
+
+
+def test_default_copies_figures_and_reports_but_not_the_archive(tmp_path, monkeypatch):
+    calls = _fake_remote(monkeypatch, LISTING)
+    assert fetch_outputs.fetch(outputs_dir=tmp_path) == ["done_run"]
+    rsyncs = [c for c in calls if c[0] == "rsync"]
+    assert len(rsyncs) == 2  # everything else, then run_metadata.yaml
+    rest = rsyncs[0]
+    assert "done_run.bin" in rest and "dump_data.json" in rest  # both excluded
+    assert all(not c[-2].endswith(".bin") for c in rsyncs)
+
+
+def test_default_ignores_a_missing_local_archive(tmp_path):
+    _write_local(tmp_path, "run", run_uuid="a", outcome="completed")  # no .bin here
+    runs = {"run": _remote(run_uuid="a", outcome="completed")}
+    assert fetch_outputs.plan(runs, tmp_path)["run"][0] == "have"
+    assert fetch_outputs.plan(runs, tmp_path, with_archive=True)["run"][0] == "fetch"
 
 
 def test_dry_run_copies_nothing(tmp_path, monkeypatch):
@@ -121,5 +141,5 @@ def test_dry_run_copies_nothing(tmp_path, monkeypatch):
 
 def test_failed_copy_skips_metadata_so_it_retries(tmp_path, monkeypatch):
     calls = _fake_remote(monkeypatch, LISTING, rsync_rc=23)
-    assert fetch_outputs.fetch(outputs_dir=tmp_path) == []
+    assert fetch_outputs.fetch(outputs_dir=tmp_path, with_archive=True) == []
     assert len([c for c in calls if c[0] == "rsync"]) == 1  # metadata copy never ran

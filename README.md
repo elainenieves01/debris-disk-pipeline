@@ -299,21 +299,24 @@ computer's one-time Slurm install is in `slurm/SETUP_work_computer.md`.
 
 ### Copying finished runs back: `fetch_outputs.py`
 
-`src/launch/fetch_outputs.py` copies every finished remote run's
-`outputs/<name>/` folder (the `.bin` included) into this checkout's `outputs/`.
-Each machine that runs it keeps its own copy, so a lost machine doesn't take
-the archives with it.
+`src/launch/fetch_outputs.py` copies every finished remote run's figures,
+report and small run files (`run_metadata.yaml`, `config.yaml`,
+`environment.txt`) into this checkout's `outputs/`. The full outputs -- the
+SimulationArchive `.bin`, the `dump_data.json` resume checkpoint and
+everything else -- stay on the cluster (barbieri), which is the home of the
+archives. Add `--with-archive` to also copy the `.bin` and checkpoint.
 
 ```bash
-python src/launch/fetch_outputs.py --dry-run   # list what it would copy
-python src/launch/fetch_outputs.py             # copy it
+python src/launch/fetch_outputs.py --dry-run        # list what it would copy
+python src/launch/fetch_outputs.py                  # copy it (no .bin)
+python src/launch/fetch_outputs.py --with-archive   # include the .bin
 ```
 
-A run is copied once its remote `run_metadata.yaml` records an outcome, and
-again if the local `.bin` is missing or a different size (git tracks a run's
-reports and metadata but not its archive). A local folder holding a
-*different* run of the same name is never overwritten. It doesn't touch git or
-`simulation_log.csv`, so it can run unattended on several machines.
+A run is copied once its remote `run_metadata.yaml` records an outcome (with
+`--with-archive`, also again if the local `.bin` is missing or a different
+size). A local folder holding a *different* run of the same name is never
+overwritten. It doesn't touch git or `simulation_log.csv`, so it can run
+unattended on several machines.
 
 It never prompts, so each machine needs an SSH key registered on the remote
 once (`ssh-copy-id elaine.nieves@10.16.39.111`, entering the password one
