@@ -104,19 +104,32 @@ def build_snapshot_table(archive_path):
     sa = rebound.Simulationarchive(str(archive_path))
     name_checker = ArchiveNameChecker(str(archive_path))
 
-    records = []
+    # Build the table column-by-column in numpy chunks (one per snapshot)
+    # rather than as one Python dict per row: a 10,000-snapshot run has ~18M
+    # rows, and a list of dicts needs tens of GB.
+    columns = ("snapshot", "time_yr", "role", "particle_index", "name",
+               "a_AU", "e", "inc_deg", "x_AU", "y_AU", "z_AU")
+    chunks = {c: [] for c in columns}
+    interned = {}
 
     for snapshot_number, sim in enumerate(sa):
         name_checker.check(sim, snapshot_number)
-        for index in range(sim.N):
+        n = sim.N
+        role_col = np.empty(n, dtype=object)
+        name_col = np.empty(n, dtype=object)
+        a_col = np.full(n, np.nan)
+        e_col = np.full(n, np.nan)
+        inc_col = np.full(n, np.nan)
+        x_col = np.empty(n)
+        y_col = np.empty(n)
+        z_col = np.empty(n)
+        for index in range(n):
             p = sim.particles[index]
             name = p.name or ""
+            name = interned.setdefault(name, name)
 
             if index == 0:
                 role = "star"
-                a = np.nan
-                e = np.nan
-                inc_deg = np.nan
             else:
                 role = _role_for_name(name)
                 # Explicitly orbit relative to the star. The bare p.a/p.e/p.inc
@@ -126,27 +139,32 @@ def build_snapshot_table(archive_path):
                 # roughly constant spurious eccentricity/inclination offset
                 # that swamps real secular evolution.
                 orbit = p.orbit(primary=sim.particles[0])
-                a = orbit.a
-                e = orbit.e
-                inc_deg = np.rad2deg(orbit.inc)
+                a_col[index] = orbit.a
+                e_col[index] = orbit.e
+                inc_col[index] = np.rad2deg(orbit.inc)
 
-            records.append(
-                {
-                    "snapshot": snapshot_number,
-                    "time_yr": sim.t,
-                    "role": role,
-                    "particle_index": index,
-                    "name": name,
-                    "a_AU": a,
-                    "e": e,
-                    "inc_deg": inc_deg,
-                    "x_AU": p.x,
-                    "y_AU": p.y,
-                    "z_AU": p.z,
-                }
-            )
+            role_col[index] = role
+            name_col[index] = name
+            x_col[index] = p.x
+            y_col[index] = p.y
+            z_col[index] = p.z
 
-    return pd.DataFrame.from_records(records)
+        chunks["snapshot"].append(np.full(n, snapshot_number, dtype=np.int64))
+        chunks["time_yr"].append(np.full(n, sim.t))
+        chunks["role"].append(role_col)
+        chunks["particle_index"].append(np.arange(n, dtype=np.int64))
+        chunks["name"].append(name_col)
+        chunks["a_AU"].append(a_col)
+        chunks["e"].append(e_col)
+        chunks["inc_deg"].append(inc_col)
+        chunks["x_AU"].append(x_col)
+        chunks["y_AU"].append(y_col)
+        chunks["z_AU"].append(z_col)
+
+    return pd.DataFrame({
+        c: (np.concatenate(chunks[c]) if chunks[c] else np.array([]))
+        for c in columns
+    })
 
 
 # ============================================================

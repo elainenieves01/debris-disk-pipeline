@@ -39,6 +39,10 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--run", required=True,
                    help="run output directory, e.g. outputs/<simulation name>")
+    p.add_argument("--finished", action="store_true",
+                   help="the run reached maxtime but its own plotting step "
+                        "died (e.g. out of memory): omit the 'stopped early' "
+                        "note from the report")
     args = p.parse_args(argv)
     run_dir = Path(args.run)
 
@@ -66,6 +70,9 @@ def main(argv=None):
         "the last saved output, not the end of the run, and the run's console "
         "output is not included.\n\n"
     )
+    if args.finished:
+        print(f"Wrote {report_path}")
+        return
     text = report_path.read_text()
     head, sep, rest = text.partition("\n\n")
     report_path.write_text(head + "\n\n" + note + rest)
