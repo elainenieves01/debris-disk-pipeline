@@ -1,0 +1,11 @@
+[Unit]
+Description=Copy this machine's finished runs to barbieri and verify them
+After=network-online.target
+Wants=network-online.target
+
+# Started hourly by debris-push-outputs.timer. Runs in the checkout where the
+# Slurm jobs write their outputs (compute.remotes.work_computer.remote_dir).
+[Service]
+Type=oneshot
+WorkingDirectory=/home/elaines/debris-disk-pipeline
+ExecStart=/home/elaines/miniconda3/envs/debris_pipeline/bin/python -u src/launch/push_outputs.py

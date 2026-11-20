@@ -1,0 +1,19 @@
+[Unit]
+Description=Hourly copy of finished runs to barbieri (debris-push-outputs.service)
+
+# One-time setup: this machine needs an SSH key registered on barbieri,
+#   ssh-keygen -t ed25519      # if ~/.ssh/id_ed25519 doesn't exist
+#   ssh-copy-id elaine.nieves@10.16.39.111
+# Install as a user unit on the work computer:
+#   cp systemd/debris-push-outputs.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now debris-push-outputs.timer
+#   loginctl enable-linger elaines    # keep it running while logged out
+# Run now:  systemctl --user start debris-push-outputs.service
+# Log:      journalctl --user -u debris-push-outputs.service
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -328,6 +328,25 @@ last time). Then schedule it hourly:
   units (install commands in the `.timer`); log via
   `journalctl --user -u debris-fetch-outputs`.
 
+### Keeping every run on barbieri: `push_outputs.py`
+
+barbieri holds the full outputs of every run (`.bin`, checkpoint, figures,
+report). `src/launch/push_outputs.py` copies this machine's finished runs
+there and checks each folder file-by-file (by size) afterwards:
+
+```bash
+python src/launch/push_outputs.py --dry-run   # list what it would do
+python src/launch/push_outputs.py             # copy + verify
+```
+
+A run still going is skipped, and a folder of the same name that belongs to a
+*different* run on barbieri is never touched. Nothing is ever deleted, on
+either side: a run reports `verified` only when nothing differs, and removing
+local copies is a separate manual step after that. On the work computer it
+runs hourly (`systemd/debris-push-outputs.{service,timer}`; one-time
+`ssh-copy-id` to barbieri, in the `.timer`), so each run reaches barbieri
+soon after it finishes.
+
 ### Surviving a crash or power outage
 
 With `simulation.dump: true` (set in every current config), the run writes a
